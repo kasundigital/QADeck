@@ -74,13 +74,18 @@ const claimNextRun = db.transaction(() => {
     db.prepare('DELETE FROM scenario_step_results WHERE run_id=?').run(run.id);
     db.prepare('DELETE FROM test_issues WHERE run_id=?').run(run.id);
     db.prepare('DELETE FROM test_pages WHERE run_id=?').run(run.id);
-    db.prepare(`UPDATE test_runs SET pages_scanned=0, issues_count=0, clean_pages=0, trace_path=NULL, video_path=NULL WHERE id=?`).run(run.id);
+    db.prepare(`
+      UPDATE test_runs
+      SET started_at=NULL, completed_at=NULL, pages_scanned=0, issues_count=0, clean_pages=0,
+          trace_path=NULL, video_path=NULL, error_message=NULL
+      WHERE id=?
+    `).run(run.id);
   }
 
   const claimed = db.prepare(`
     UPDATE test_runs
     SET status='running',
-        started_at=COALESCE(started_at, CURRENT_TIMESTAMP),
+        started_at=CURRENT_TIMESTAMP,
         heartbeat_at=CURRENT_TIMESTAMP,
         worker_id=?,
         current_url=NULL,
