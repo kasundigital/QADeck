@@ -8,6 +8,8 @@ fs.mkdirSync(dataDir, { recursive: true });
 const db = new Database(path.join(dataDir, 'qadeck.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS projects (
@@ -59,8 +61,27 @@ CREATE TABLE IF NOT EXISTS test_issues (
 );
 
 CREATE INDEX IF NOT EXISTS idx_runs_project ON test_runs(project_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_status ON test_runs(status, id);
 CREATE INDEX IF NOT EXISTS idx_pages_run ON test_pages(run_id);
 CREATE INDEX IF NOT EXISTS idx_issues_run ON test_issues(run_id);
 `);
+
+function ensureColumn(table, name, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((column) => column.name === name)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+  }
+}
+
+ensureColumn('test_runs', 'queued_at', 'TEXT');
+ensureColumn('test_runs', 'heartbeat_at', 'TEXT');
+ensureColumn('test_runs', 'current_url', 'TEXT');
+ensureColumn('test_runs', 'worker_id', 'TEXT');
+
+db.prepare(`
+  UPDATE test_runs
+  SET queued_at=COALESCE(queued_at, started_at, completed_at)
+  WHERE queued_at IS NULL
+`).run();
 
 module.exports = db;
