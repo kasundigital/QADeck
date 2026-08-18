@@ -1,57 +1,23 @@
 <%- include('partials/header', { title: scenario && scenario.id ? 'Edit Scenario' : 'New Scenario', email: '' }) %>
 <%
-  const editing = Boolean(scenario && scenario.id);
-  const rows = steps && steps.length ? steps : [{ action: 'visit', target: '', value: '/' }];
+const editing=Boolean(scenario&&scenario.id),rows=steps&&steps.length?steps:[{action:'visit',target:'',value:'/'}];
+const useLogin=scenario?Number(scenario.use_project_login??1)===1||scenario.use_project_login==='1':true;
+const roleId=Number(scenario?.role_id||0),retryCount=Number(scenario?.retry_count??1);
+const actions=[['visit','Visit URL'],['click','Click'],['fill','Fill field'],['select','Select option'],['check','Check'],['uncheck','Uncheck'],['expect_text','Expect text'],['expect_url','Expect URL'],['wait','Wait'],['screenshot','Screenshot'],['api_get','API GET'],['api_post','API POST'],['expect_status','Expect API status'],['expect_json','Expect JSON value']];
 %>
-<div class="page-head compact"><div><span class="eyebrow">SCENARIO BUILDER</span><h1><%= editing ? 'Edit scenario' : 'New scenario' %></h1><p><%= project.name %> · Build a repeatable browser workflow without writing Playwright code.</p></div></div>
-<div class="form-card wide-form">
-  <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
-  <form method="post" action="<%= editing ? '/scenarios/' + scenario.id : '/projects/' + project.id + '/scenarios' %>" class="stack-form">
-    <label>Scenario name<input name="name" required placeholder="Create customer" value="<%= scenario?.name || '' %>"></label>
-    <label>Description<input name="description" placeholder="Login, create a customer and verify success" value="<%= scenario?.description || '' %>"></label>
-
-    <div class="subsection-head"><div><h4>Workflow steps</h4><p>Use CSS selectors, Playwright text selectors such as <code>text=Login</code>, or URLs/paths where appropriate.</p></div><button class="btn secondary" type="button" id="add-step">＋ Add step</button></div>
-    <div id="scenario-steps" class="scenario-step-list">
-      <% rows.forEach((step, index) => { %>
-      <div class="scenario-step-row">
-        <span class="step-number"><%= index + 1 %></span>
-        <label>Action<select name="step_action">
-          <% [['visit','Visit URL'],['click','Click'],['fill','Fill field'],['select','Select option'],['check','Check'],['uncheck','Uncheck'],['expect_text','Expect text'],['expect_url','Expect URL'],['wait','Wait'],['screenshot','Screenshot']].forEach(([value,label]) => { %><option value="<%= value %>" <%= step.action === value ? 'selected' : '' %>><%= label %></option><% }) %>
-        </select></label>
-        <label>Target<input name="step_target" placeholder="CSS selector or text=Button" value="<%= step.target || '' %>"></label>
-        <label>Value<input name="step_value" placeholder="Value, URL, text or wait ms" value="<%= step.value || '' %>"></label>
-        <button type="button" class="icon-remove remove-step" aria-label="Remove step">×</button>
-      </div>
-      <% }) %>
-    </div>
-    <div class="scenario-help">
-      <strong>Examples</strong>
-      <span><b>Visit:</b> value = <code>/customers</code></span>
-      <span><b>Click:</b> target = <code>text=Add Customer</code></span>
-      <span><b>Fill:</b> target = <code>#name</code>, value = <code>QA Test User</code></span>
-      <span><b>Expect text:</b> target = <code>.alert-success</code>, value = <code>Customer created</code></span>
-    </div>
-    <div class="form-actions"><a class="btn secondary" href="/projects/<%= project.id %>">Cancel</a><button class="btn primary" type="submit"><%= editing ? 'Save scenario' : 'Create scenario' %></button></div>
-  </form>
+<div class="page-head compact"><div><span class="eyebrow">SCENARIO BUILDER</span><h1><%=editing?'Edit scenario':'New scenario'%></h1><p><%=project.name%> · Browser and API workflow without writing Playwright code.</p></div></div>
+<div class="form-card wide-form"><%if(error){%><div class="alert danger"><%=error%></div><%}%><form method="post" action="<%=editing?'/scenarios/'+scenario.id:'/projects/'+project.id+'/scenarios'%>" class="stack-form">
+<label>Scenario name<input name="name" required value="<%=scenario?.name||''%>" placeholder="Create customer"></label>
+<label>Description<input name="description" value="<%=scenario?.description||''%>"></label>
+<div class="option-grid">
+<label class="option-card"><input type="checkbox" name="use_project_login" value="1" <%=useLogin?'checked':''%>><span><strong>Use automatic login</strong><small>Logs in before running steps.</small></span></label>
+<label>Login role<select name="role_id"><option value="">Default project login</option><% (roles||[]).forEach(r=>{ %><option value="<%=r.id%>" <%=roleId===r.id?'selected':''%>><%=r.name%></option><%})%></select></label>
 </div>
-
-<template id="scenario-step-template">
-  <div class="scenario-step-row">
-    <span class="step-number"></span>
-    <label>Action<select name="step_action"><option value="visit">Visit URL</option><option value="click">Click</option><option value="fill">Fill field</option><option value="select">Select option</option><option value="check">Check</option><option value="uncheck">Uncheck</option><option value="expect_text">Expect text</option><option value="expect_url">Expect URL</option><option value="wait">Wait</option><option value="screenshot">Screenshot</option></select></label>
-    <label>Target<input name="step_target" placeholder="CSS selector or text=Button"></label>
-    <label>Value<input name="step_value" placeholder="Value, URL, text or wait ms"></label>
-    <button type="button" class="icon-remove remove-step" aria-label="Remove step">×</button>
-  </div>
-</template>
-<script>
-(() => {
-  const list = document.getElementById('scenario-steps');
-  const template = document.getElementById('scenario-step-template');
-  const renumber = () => [...list.querySelectorAll('.scenario-step-row')].forEach((row, index) => row.querySelector('.step-number').textContent = index + 1);
-  document.getElementById('add-step').addEventListener('click', () => { list.appendChild(template.content.cloneNode(true)); renumber(); });
-  list.addEventListener('click', (event) => { const button = event.target.closest('.remove-step'); if (button && list.children.length > 1) { button.closest('.scenario-step-row').remove(); renumber(); } });
-  renumber();
-})();
-</script>
+<label>Retry failed step<select name="retry_count"><%[0,1,2,3].forEach(n=>{ %><option value="<%=n%>" <%=retryCount===n?'selected':''%>><%=n===0?'No retry':n+' retry'+(n>1?'s':'')%></option><%})%></select></label>
+<div class="subsection-head"><div><h4>Workflow steps</h4><p>Browser selectors, URLs and API calls can be mixed in one scenario.</p></div><button class="btn secondary" type="button" id="add-step">＋ Add step</button></div>
+<div id="scenario-steps" class="scenario-step-list"><%rows.forEach((step,index)=>{ %><div class="scenario-step-row"><span class="step-number"><%=index+1%></span><label>Action<select name="step_action"><%actions.forEach(([v,l])=>{ %><option value="<%=v%>" <%=step.action===v?'selected':''%>><%=l%></option><%})%></select></label><label>Target<input name="step_target" value="<%=step.target||''%>" placeholder="CSS selector / URL / JSON path"></label><label>Value<input name="step_value" value="<%=step.value||''%>" placeholder="Value / JSON / expected result"></label><button type="button" class="icon-remove remove-step">×</button></div><%})%></div>
+<div class="scenario-help"><strong>Examples</strong><span><b>API GET:</b> target <code>/api/health</code>; optional Value = JSON headers</span><span><b>API POST:</b> target <code>/api/tickets</code>; Value = JSON body</span><span><b>Expect status:</b> Value = <code>200</code></span><span><b>Expect JSON:</b> Target = <code>data.status</code>; Value = <code>ok</code></span></div>
+<div class="form-actions"><a class="btn secondary" href="/projects/<%=project.id%>">Cancel</a><button class="btn primary" type="submit"><%=editing?'Save scenario':'Create scenario'%></button></div></form></div>
+<template id="scenario-step-template"><div class="scenario-step-row"><span class="step-number"></span><label>Action<select name="step_action"><%actions.forEach(([v,l])=>{ %><option value="<%=v%>"><%=l%></option><%})%></select></label><label>Target<input name="step_target" placeholder="CSS selector / URL / JSON path"></label><label>Value<input name="step_value" placeholder="Value / JSON / expected result"></label><button type="button" class="icon-remove remove-step">×</button></div></template>
+<script>(()=>{const l=document.getElementById('scenario-steps'),t=document.getElementById('scenario-step-template'),renumber=()=>[...l.querySelectorAll('.scenario-step-row')].forEach((r,i)=>r.querySelector('.step-number').textContent=i+1);document.getElementById('add-step').onclick=()=>{l.appendChild(t.content.cloneNode(true));renumber();};l.onclick=e=>{const b=e.target.closest('.remove-step');if(b&&l.children.length>1){b.closest('.scenario-step-row').remove();renumber();}};renumber();})();</script>
 <%- include('partials/footer') %>
