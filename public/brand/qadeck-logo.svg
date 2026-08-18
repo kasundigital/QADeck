@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 220" role="img" aria-labelledby="title desc">
+  <title id="title">QADeck</title>
+  <desc id="desc">QADeck quality assurance platform logo</desc>
+  <defs>
+    <linearGradient id="deck" x1="50" y1="38" x2="185" y2="168" gradientUnits="userSpaceOnUse"><stop stop-color="#2fe0ff"/><stop offset=".48" stop-color="#1885ff"/><stop offset="1" stop-color="#6a28ff"/></linearGradient>
+    <linearGradient id="qring" x1="48" y1="78" x2="168" y2="190" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset=".5" stop-color="#b9edff"/><stop offset="1" stop-color="#24a8ff"/></linearGradient>
+    <linearGradient id="tick" x1="76" y1="130" x2="139" y2="168" gradientUnits="userSpaceOnUse"><stop stop-color="#44f0ff"/><stop offset=".52" stop-color="#32a2ff"/><stop offset="1" stop-color="#9d2dff"/></linearGradient>
+    <linearGradient id="word" x1="420" y1="58" x2="790" y2="170" gradientUnits="userSpaceOnUse"><stop stop-color="#087dff"/><stop offset=".55" stop-color="#3b60ff"/><stop offset="1" stop-color="#8c22ff"/></linearGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#07164a" flood-opacity=".28"/></filter>
+  </defs>
+  <g transform="translate(18 10)" filter="url(#shadow)">
+    <rect x="66" y="29" width="116" height="105" rx="18" fill="url(#deck)" opacity=".64" transform="rotate(5 124 82)"/>
+    <rect x="47" y="43" width="121" height="111" rx="18" fill="url(#deck)" opacity=".86" transform="rotate(2 108 98)"/>
+    <rect x="30" y="57" width="127" height="116" rx="19" fill="#0757df"/>
+    <path d="M30 76c0-10.5 8.5-19 19-19h89c10.5 0 19 8.5 19 19v10H30z" fill="#0637a9"/>
+    <circle cx="47" cy="71" r="4.7" fill="#ff4f47"/><circle cx="61" cy="71" r="4.7" fill="#ffc62a"/><circle cx="75" cy="71" r="4.7" fill="#25dc69"/>
+    <circle cx="96" cy="128" r="46" fill="#072a78" stroke="url(#qring)" stroke-width="16"/>
+    <path d="M129 159l27 29" fill="none" stroke="url(#qring)" stroke-width="17" stroke-linecap="round"/>
+    <path d="M74 127l15 16 32-35" fill="none" stroke="url(#tick)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="225" y="151" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="109" font-weight="800" letter-spacing="-7" fill="#07164a">QA</text>
+  <text x="398" y="151" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="109" font-weight="800" letter-spacing="-7" fill="url(#word)">Deck</text>
+</svg>
