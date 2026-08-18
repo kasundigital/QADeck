@@ -5,6 +5,8 @@
   const accessibilityEnabled = project ? Number(project.enable_accessibility ?? 1) === 1 || project.enable_accessibility === '1' : true;
   const traceEnabled = project ? Number(project.enable_trace ?? 1) === 1 || project.enable_trace === '1' : true;
   const videoEnabled = project ? Number(project.enable_video ?? 1) === 1 || project.enable_video === '1' : true;
+  const scheduleEnabled = project ? Number(project.schedule_enabled ?? 0) === 1 || project.schedule_enabled === '1' : false;
+  const scheduleInterval = Number(project?.schedule_interval_minutes || 1440);
   const fields = extraLoginFields && extraLoginFields.length ? extraLoginFields : [];
 %>
 <div class="page-head compact"><div><span class="eyebrow">PROJECT SETUP</span><h1><%= editing ? 'Edit project' : 'Add project' %></h1><p>Configure the target site, login flow and the QA checks to run in the background.</p></div></div>
@@ -59,6 +61,20 @@
       <label class="option-card"><input type="checkbox" name="enable_video" value="1" <%= videoEnabled ? 'checked' : '' %>><span><strong>Browser video</strong><small>Record the automated browser session.</small></span></label>
     </div>
 
+    <div class="form-section divider"><h3>Scheduled QA</h3><p>Let the background worker automatically queue full QA crawls even when nobody has QADeck open.</p></div>
+    <label class="option-card schedule-toggle"><input id="schedule-enabled" type="checkbox" name="schedule_enabled" value="1" <%= scheduleEnabled ? 'checked' : '' %>><span><strong>Enable recurring QA crawl</strong><small>The schedule begins from the time you save this project.</small></span></label>
+    <label>Run automatically every
+      <select id="schedule-interval" name="schedule_interval_minutes">
+        <option value="15" <%= scheduleInterval === 15 ? 'selected' : '' %>>15 minutes</option>
+        <option value="30" <%= scheduleInterval === 30 ? 'selected' : '' %>>30 minutes</option>
+        <option value="60" <%= scheduleInterval === 60 ? 'selected' : '' %>>1 hour</option>
+        <option value="360" <%= scheduleInterval === 360 ? 'selected' : '' %>>6 hours</option>
+        <option value="720" <%= scheduleInterval === 720 ? 'selected' : '' %>>12 hours</option>
+        <option value="1440" <%= scheduleInterval === 1440 ? 'selected' : '' %>>24 hours</option>
+        <option value="10080" <%= scheduleInterval === 10080 ? 'selected' : '' %>>7 days</option>
+      </select>
+    </label>
+
     <div class="form-actions"><a class="btn secondary" href="<%= editing ? '/projects/' + project.id : '/' %>">Cancel</a><button class="btn primary" type="submit"><%= editing ? 'Save changes' : 'Add project' %></button></div>
   </form>
 </div>
@@ -81,6 +97,11 @@
     const remove = event.target.closest('.icon-remove');
     if (remove) remove.closest('.extra-field-row').remove();
   });
+  const scheduleEnabled = document.getElementById('schedule-enabled');
+  const scheduleInterval = document.getElementById('schedule-interval');
+  const syncSchedule = () => { scheduleInterval.disabled = !scheduleEnabled.checked; };
+  scheduleEnabled.addEventListener('change', syncSchedule);
+  syncSchedule();
 })();
 </script>
 <%- include('partials/footer') %>
