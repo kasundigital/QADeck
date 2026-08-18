@@ -1,0 +1,17 @@
+<%- include('partials/header', { title: project && project.id ? 'Edit Project' : 'Add Project', email: '' }) %>
+<div class="page-head compact"><div><span class="eyebrow">PROJECT SETUP</span><h1><%= project && project.id ? 'Edit project' : 'Add project' %></h1><p>Configure the target site and optional login account QADeck should use.</p></div></div>
+
+<div class="form-card">
+  <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
+  <form method="post" action="<%= project && project.id ? '/projects/' + project.id : '/projects' %>" class="stack-form">
+    <div class="form-section"><h3>Website</h3><p>QADeck only follows same-origin links and avoids paths that look destructive.</p></div>
+    <label>Project name<input name="name" required placeholder="IMS Support System" value="<%= project?.name || '' %>"></label>
+    <label>Base URL<input name="base_url" type="url" required placeholder="https://staging.example.com/" value="<%= project?.base_url || '' %>"></label>
+    <div class="form-section divider"><h3>Login (optional)</h3><p>Credentials are encrypted before being stored. QADeck attempts a conventional username/password login before crawling.</p></div>
+    <label>Login URL<input name="login_url" placeholder="https://staging.example.com/login" value="<%= project?.login_url || '' %>"></label>
+    <label>Username / email<input name="username" autocomplete="off" value="<%= project?.username || '' %>"></label>
+    <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="<%= project && project.id ? 'Leave blank to keep current password' : '' %>"></label>
+    <div class="form-actions"><a class="btn secondary" href="<%= project && project.id ? '/projects/' + project.id : '/' %>">Cancel</a><button class="btn primary" type="submit"><%= project && project.id ? 'Save changes' : 'Add project' %></button></div>
+  </form>
+</div>
+<%- include('partials/footer') %>

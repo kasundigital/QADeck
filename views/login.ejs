@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sign in · QADeck</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <div class="login-brand"><span class="brand-mark large">Q</span><div><h1>QADeck</h1><p>Automated Web QA Console</p></div></div>
+    <h2>Welcome back</h2>
+    <p class="muted">Sign in to manage projects and test runs.</p>
+    <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
+    <form method="post" action="/login" class="stack-form">
+      <label>Email<input type="email" name="email" required autofocus></label>
+      <label>Password<input type="password" name="password" required></label>
+      <button class="btn primary full" type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+</html>

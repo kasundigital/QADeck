@@ -1,0 +1,39 @@
+<%- include('partials/header', { title: 'Run #' + run.id, email: '' }) %>
+<div class="page-head">
+  <div><span class="eyebrow">TEST REPORT</span><h1><%= run.project_name %> · Run #<%= run.id %></h1><p><%= run.base_url %></p></div>
+  <a class="btn secondary" href="/projects/<%= run.project_id %>">← Back to project</a>
+</div>
+
+<% if (run.status === 'queued' || run.status === 'running') { %>
+<div class="running-banner"><span class="spinner"></span><div><strong>QA test is <%= run.status %>…</strong><p>This report will refresh automatically when the browser run finishes.</p></div></div>
+<script>setTimeout(() => location.reload(), 2500);</script>
+<% } %>
+<% if (run.status === 'failed') { %><div class="alert danger"><strong>Run failed:</strong> <%= run.error_message %></div><% } %>
+
+<div class="stats-grid report-stats">
+  <div class="stat-card"><span>Status</span><strong class="capitalize"><%= run.status %></strong></div>
+  <div class="stat-card"><span>Pages scanned</span><strong><%= run.pages_scanned %></strong></div>
+  <div class="stat-card"><span>Issues</span><strong class="<%= run.issues_count ? 'text-danger' : 'text-success' %>"><%= run.issues_count %></strong></div>
+  <div class="stat-card"><span>Clean pages</span><strong><%= run.clean_pages %></strong></div>
+</div>
+
+<% if (issues.length) { %>
+<div class="section-head"><div><h2>Issues</h2><p>Detected browser, HTTP, JavaScript, network, asset and responsive problems.</p></div></div>
+<div class="issues-list">
+<% issues.forEach((issue) => { %>
+<article class="issue-card">
+  <div class="issue-bar"><span class="severity <%= issueClass(issue.severity) %>"><%= issue.severity %></span><span class="category"><%= issue.category %></span></div>
+  <div class="issue-body"><div class="issue-copy"><h3><%= issue.message %></h3><% if (issue.page_url) { %><p class="issue-url"><%= issue.page_url %></p><% } %><% if (issue.details) { %><pre><%= issue.details %></pre><% } %></div>
+  <% if (issue.screenshot_path) { %><a href="<%= issue.screenshot_path %>" target="_blank" class="thumb"><img src="<%= issue.screenshot_path %>" alt="Failure screenshot"></a><% } %></div>
+</article>
+<% }) %>
+</div>
+<% } else if (run.status === 'completed') { %><div class="success-panel"><span>✓</span><div><h2>No issues detected</h2><p>The generic safe crawl completed without detecting HTTP, browser-console, failed-network, broken-image or overflow issues.</p></div></div><% } %>
+
+<% if (pages.length) { %>
+<div class="section-head"><div><h2>Page timeline</h2><p>Every page QADeck visited during this run.</p></div></div>
+<div class="page-grid">
+<% pages.forEach((page) => { %><article class="page-card"><a href="<%= page.screenshot_path %>" target="_blank"><img src="<%= page.screenshot_path %>" alt="Screenshot"></a><div><strong><%= page.title || 'Untitled page' %></strong><span><%= page.status_code || '—' %> · <%= page.duration_ms %> ms</span><small><%= page.url %></small></div></article><% }) %>
+</div>
+<% } %>
+<%- include('partials/footer') %>

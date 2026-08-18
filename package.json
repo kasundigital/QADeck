@@ -1,0 +1,23 @@
+{
+  "name": "qadeck",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Centralized web QA testing dashboard powered by Playwright",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js",
+    "check": "node --check src/app.js && node --check src/runner.js && node --check src/db.js && node --check src/crypto.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "helmet": "^8.1.0",
+    "playwright": "^1.54.1"
+  }
+}
