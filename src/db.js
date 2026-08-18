@@ -120,6 +120,9 @@ ensureColumn('projects', 'enable_accessibility', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('projects', 'enable_trace', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('projects', 'enable_video', 'INTEGER NOT NULL DEFAULT 1');
 
+ensureColumn('test_scenarios', 'use_project_login', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('scenario_step_results', 'viewport', `TEXT NOT NULL DEFAULT 'desktop'`);
+
 ensureColumn('test_runs', 'queued_at', 'TEXT');
 ensureColumn('test_runs', 'heartbeat_at', 'TEXT');
 ensureColumn('test_runs', 'current_url', 'TEXT');
