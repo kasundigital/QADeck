@@ -1,16 +1,41 @@
 <%- include('partials/header', { title: project.name, email: '' }) %>
 <div class="page-head">
   <div><span class="eyebrow">PROJECT</span><h1><%= project.name %></h1><p><a href="<%= project.base_url %>" target="_blank" rel="noreferrer"><%= project.base_url %></a></p></div>
-  <div class="head-actions"><a class="btn secondary" href="/projects/<%= project.id %>/edit">Edit</a><form method="post" action="/projects/<%= project.id %>/run"><button class="btn primary" type="submit">▶ Run QA in background</button></form></div>
+  <div class="head-actions"><a class="btn secondary" href="/projects/<%= project.id %>/edit">Edit</a><a class="btn secondary" href="/projects/<%= project.id %>/scenarios/new">＋ Scenario</a><form method="post" action="/projects/<%= project.id %>/run"><button class="btn primary" type="submit">▶ Full QA crawl</button></form></div>
 </div>
 
-<div class="info-strip"><div><span>Login configured</span><strong><%= project.login_url && project.username ? 'Yes' : 'No' %></strong></div><div><span>Created</span><strong><%= formatDate(project.created_at) %></strong></div><div><span>Execution</span><strong>Background worker</strong></div></div>
+<div class="info-strip"><div><span>Login configured</span><strong><%= project.login_url && project.username ? 'Yes' : 'No' %></strong></div><div><span>Devices</span><strong><%= viewportProfiles.join(', ') %></strong></div><div><span>Execution</span><strong>Background worker</strong></div></div>
 
-<div class="section-head"><div><h2>Test runs</h2><p>Queued, active and completed browser runs for this project. You can leave QADeck after starting a run.</p></div></div>
-<% if (!runs.length) { %><div class="empty-state small"><h3>No test runs yet</h3><p>Start the first background run to crawl the website and collect screenshots and issues.</p></div><% } else { %>
-<div class="table-card"><table><thead><tr><th>Run</th><th>Status</th><th>Pages</th><th>Issues</th><th>Clean pages</th><th>Completed</th><th></th></tr></thead><tbody>
-<% runs.forEach((run) => { %><tr><td>#<%= run.id %></td><td><span class="status-pill <%= run.status %>"><%= run.status %></span></td><td><%= run.pages_scanned %></td><td><strong class="<%= run.issues_count ? 'text-danger' : 'text-success' %>"><%= run.issues_count %></strong></td><td><%= run.clean_pages %></td><td><%= formatDate(run.completed_at) %></td><td><a class="text-link" href="/runs/<%= run.id %>">View report →</a></td></tr><% }) %>
+<div class="feature-chip-row">
+  <span class="feature-chip <%= project.enable_visual ? 'on' : '' %>">Visual regression</span>
+  <span class="feature-chip <%= project.enable_accessibility ? 'on' : '' %>">Accessibility</span>
+  <span class="feature-chip <%= project.enable_trace ? 'on' : '' %>">Trace</span>
+  <span class="feature-chip <%= project.enable_video ? 'on' : '' %>">Video</span>
+</div>
+
+<div class="section-head"><div><h2>Scenarios</h2><p>Reusable no-code workflows that run through the same background QA worker.</p></div><a class="btn secondary" href="/projects/<%= project.id %>/scenarios/new">＋ Add scenario</a></div>
+<% if (!scenarios.length) { %>
+<div class="empty-state small"><h3>No scenarios yet</h3><p>Create a workflow such as login → open customer → fill form → save → verify success.</p><a class="btn primary" href="/projects/<%= project.id %>/scenarios/new">Create scenario</a></div>
+<% } else { %>
+<div class="scenario-grid">
+<% scenarios.forEach((scenario) => { %>
+  <article class="scenario-card">
+    <div><span class="eyebrow">WORKFLOW</span><h3><%= scenario.name %></h3><p><%= scenario.description || 'Reusable browser workflow' %></p><small><%= scenario.step_count %> steps</small></div>
+    <div class="card-actions">
+      <form method="post" action="/scenarios/<%= scenario.id %>/run"><button class="btn primary" type="submit">▶ Run</button></form>
+      <a class="btn secondary" href="/scenarios/<%= scenario.id %>/edit">Edit</a>
+      <form method="post" action="/scenarios/<%= scenario.id %>/delete" onsubmit="return confirm('Delete this scenario?')"><button class="btn danger-btn" type="submit">Delete</button></form>
+    </div>
+  </article>
+<% }) %>
+</div>
+<% } %>
+
+<div class="section-head"><div><h2>Test runs</h2><p>Queued, active and completed crawl/scenario runs. You can leave QADeck after starting a run.</p></div></div>
+<% if (!runs.length) { %><div class="empty-state small"><h3>No test runs yet</h3><p>Start a full QA crawl or run one of your scenarios.</p></div><% } else { %>
+<div class="table-card"><table><thead><tr><th>Run</th><th>Type</th><th>Status</th><th>Views</th><th>Issues</th><th>Clean</th><th>Completed</th><th></th></tr></thead><tbody>
+<% runs.forEach((run) => { %><tr><td>#<%= run.id %></td><td><span class="category"><%= run.run_type || 'crawl' %></span></td><td><span class="status-pill <%= run.status %>"><%= run.status %></span></td><td><%= run.pages_scanned %></td><td><strong class="<%= run.issues_count ? 'text-danger' : 'text-success' %>"><%= run.issues_count %></strong></td><td><%= run.clean_pages %></td><td><%= formatDate(run.completed_at) %></td><td><a class="text-link" href="/runs/<%= run.id %>">View report →</a></td></tr><% }) %>
 </tbody></table></div>
 <% } %>
-<div class="danger-zone"><div><h3>Delete project</h3><p>Removes the project, its test history and database records.</p></div><form method="post" action="/projects/<%= project.id %>/delete" onsubmit="return confirm('Delete this project and all test history?')"><button class="btn danger-btn" type="submit">Delete project</button></form></div>
+<div class="danger-zone"><div><h3>Delete project</h3><p>Removes the project, its scenarios, test history and database records.</p></div><form method="post" action="/projects/<%= project.id %>/delete" onsubmit="return confirm('Delete this project and all test history?')"><button class="btn danger-btn" type="submit">Delete project</button></form></div>
 <%- include('partials/footer') %>
