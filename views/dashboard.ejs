@@ -23,7 +23,7 @@
         <form method="post" action="/projects/<%= project.id %>/run"><button class="btn primary" type="submit">▶ Run QA</button></form>
         <a class="btn secondary" href="/projects/<%= project.id %>">View</a>
         <a class="btn secondary" href="/projects/<%= project.id %>/edit">Edit</a>
-        <form method="post" action="/projects/<%= project.id %>/delete" onsubmit="return confirm('Delete <%= project.name.replace(/'/g, "\\'") %> and all of its test history? This cannot be undone.')"><button class="btn danger-btn" type="submit">Delete</button></form>
+        <form method="post" action="/projects/<%= project.id %>/delete" onsubmit="return confirm('Delete this project and all of its test history? This cannot be undone.')"><button class="btn danger-btn" type="submit">Delete</button></form>
       </div>
     </article>
   <% }) %>
