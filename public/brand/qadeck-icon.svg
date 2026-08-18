@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">QADeck icon</title>
+  <desc id="desc">Layered browser cards with a Q-shaped QA check mark</desc>
+  <defs>
+    <linearGradient id="bg" x1="22" y1="18" x2="224" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071d68"/>
+      <stop offset=".55" stop-color="#082fc9"/>
+      <stop offset="1" stop-color="#661cff"/>
+    </linearGradient>
+    <linearGradient id="card1" x1="72" y1="40" x2="202" y2="150" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2fd6ff"/>
+      <stop offset="1" stop-color="#6757ff"/>
+    </linearGradient>
+    <linearGradient id="card2" x1="50" y1="56" x2="181" y2="164" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#087dff"/>
+      <stop offset="1" stop-color="#3941ed"/>
+    </linearGradient>
+    <linearGradient id="qring" x1="62" y1="83" x2="196" y2="206" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset=".48" stop-color="#b9edff"/>
+      <stop offset="1" stop-color="#24a8ff"/>
+    </linearGradient>
+    <linearGradient id="tick" x1="92" y1="133" x2="158" y2="174" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#42efff"/>
+      <stop offset=".48" stop-color="#35a6ff"/>
+      <stop offset="1" stop-color="#a02cff"/>
+    </linearGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#06164f" flood-opacity=".34"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#bg)"/>
+  <g filter="url(#shadow)">
+    <rect x="74" y="41" width="126" height="116" rx="20" fill="url(#card1)" opacity=".9" transform="rotate(5 137 99)"/>
+    <rect x="54" y="55" width="132" height="122" rx="20" fill="url(#card2)" opacity=".96" transform="rotate(2 120 116)"/>
+    <rect x="37" y="70" width="136" height="126" rx="21" fill="#0756df"/>
+    <rect x="37" y="70" width="136" height="27" rx="21" fill="#0637a9"/>
+    <rect x="37" y="86" width="136" height="11" fill="#0637a9"/>
+    <circle cx="55" cy="83.5" r="5.2" fill="#ff4f47"/>
+    <circle cx="70" cy="83.5" r="5.2" fill="#ffc62a"/>
+    <circle cx="85" cy="83.5" r="5.2" fill="#25dc69"/>
+    <circle cx="108" cy="146" r="53" fill="#072a78" stroke="url(#qring)" stroke-width="18"/>
+    <path d="M145 181l30 31" fill="none" stroke="url(#qring)" stroke-width="19" stroke-linecap="round"/>
+    <path d="M82 145l17 18 36-39" fill="none" stroke="url(#tick)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M27 182c30 32 77 54 127 51 28-2 55-11 76-28" fill="none" stroke="#5aa9ff" stroke-opacity=".16" stroke-width="2"/>
+</svg>
