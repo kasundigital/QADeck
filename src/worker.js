@@ -24,14 +24,12 @@ function recoverStaleRuns() {
       AND (heartbeat_at IS NULL OR datetime(heartbeat_at) < datetime('now', ?))
   `).run(`-${staleMinutes} minutes`);
 
-  if (result.changes) {
-    console.log(`[QADeck worker] Re-queued ${result.changes} stale run(s).`);
-  }
+  if (result.changes) console.log(`[QADeck worker] Re-queued ${result.changes} stale run(s).`);
 }
 
 const claimNextRun = db.transaction(() => {
   const run = db.prepare(`
-    SELECT id, project_id
+    SELECT id, project_id, run_type, scenario_id
     FROM test_runs
     WHERE status='queued'
     ORDER BY id ASC
@@ -64,7 +62,7 @@ const claimNextRun = db.transaction(() => {
     return null;
   }
 
-  return { runId: run.id, project };
+  return { runId: run.id, project, runType: run.run_type || 'crawl', scenarioId: run.scenario_id || null };
 });
 
 async function loop() {
@@ -86,9 +84,9 @@ async function loop() {
       continue;
     }
 
-    console.log(`[QADeck worker] Running QA job #${job.runId} for ${job.project.name}.`);
+    console.log(`[QADeck worker] Running ${job.runType} job #${job.runId} for ${job.project.name}.`);
     try {
-      await runProject(job.runId, job.project, { workerId });
+      await runProject(job.runId, job.project, { workerId, runType: job.runType, scenarioId: job.scenarioId });
     } catch (error) {
       console.error(`[QADeck worker] Run #${job.runId} crashed:`, error);
       db.prepare(`
