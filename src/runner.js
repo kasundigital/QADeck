@@ -23,6 +23,10 @@ const VIEWPORTS = {
 
 const dangerousPath = /(logout|log-out|signout|sign-out|delete|remove|destroy|terminate|drop|purge|unsubscribe)/i;
 
+function enabled(value) {
+  return Number(value) === 1 || value === true;
+}
+
 function cleanUrl(raw, base) {
   try {
     const url = new URL(raw, base);
@@ -72,7 +76,9 @@ function cssQuoted(value) {
 
 async function visibleLocator(locator) {
   try {
-    return await locator.count() && await locator.first().isVisible({ timeout: 500 }) ? locator.first() : null;
+    if (!(await locator.count())) return null;
+    const first = locator.first();
+    return await first.isVisible({ timeout: 500 }) ? first : null;
   } catch {
     return null;
   }
@@ -92,25 +98,21 @@ async function locateCustomField(page, field) {
     if (locator) return locator;
   }
 
-  if (field.name) {
-    try {
-      const byLabel = await visibleLocator(page.getByLabel(field.name, { exact: false }));
-      if (byLabel) return byLabel;
-    } catch {}
+  if (!field.name) return null;
 
-    const name = cssQuoted(field.name);
-    const selectors = [
-      `[name="${name}"]`,
-      `#${String(field.name).replace(/[^a-zA-Z0-9_-]/g, '\\$&')}`,
-      `input[placeholder*="${name}" i]`,
-      `select[aria-label*="${name}" i]`,
-      `input[aria-label*="${name}" i]`
-    ];
-    const auto = await firstVisible(page, selectors);
-    if (auto) return auto;
-  }
+  try {
+    const byLabel = await visibleLocator(page.getByLabel(field.name, { exact: false }));
+    if (byLabel) return byLabel;
+  } catch {}
 
-  return null;
+  const name = cssQuoted(field.name);
+  return firstVisible(page, [
+    `[name="${name}"]`,
+    `input[placeholder*="${name}" i]`,
+    `select[placeholder*="${name}" i]`,
+    `input[aria-label*="${name}" i]`,
+    `select[aria-label*="${name}" i]`
+  ]);
 }
 
 async function fillCustomField(page, field, addLooseIssue, viewportName) {
@@ -123,13 +125,33 @@ async function fillCustomField(page, field, addLooseIssue, viewportName) {
   try {
     const tagName = await locator.evaluate((element) => element.tagName.toLowerCase());
     if (field.type === 'select' || tagName === 'select') {
-      await locator.selectOption({ label: field.value }).catch(() => locator.selectOption(field.value));
+      await locator.selectOption({ label: String(field.value || '') }).catch(() => locator.selectOption(String(field.value || '')));
     } else {
       await locator.fill(String(field.value || ''));
     }
   } catch (error) {
     addLooseIssue('high', 'authentication', `Could not fill extra login field: ${field.name || field.selector}`, `${viewportName}: ${error.message}`);
   }
+}
+
+async function findUsernameField(page) {
+  const semantic = await firstVisible(page, [
+    'input[type="email"]',
+    'input[name*="email" i]',
+    'input[name*="username" i]',
+    'input[name*="user_name" i]',
+    'input[name*="user" i]',
+    'input[name*="login" i]',
+    'input[autocomplete="username"]'
+  ]);
+  if (semantic) return semantic;
+
+  try {
+    const textInputs = page.locator('input[type="text"]:visible');
+    const count = await textInputs.count();
+    if (count) return textInputs.nth(count - 1);
+  } catch {}
+  return null;
 }
 
 async function attemptLogin(page, project, addLooseIssue, viewportName) {
@@ -152,14 +174,8 @@ async function attemptLogin(page, project, addLooseIssue, viewportName) {
       await fillCustomField(page, field, addLooseIssue, viewportName);
     }
 
-    const userInput = await firstVisible(page, [
-      'input[type="email"]',
-      'input[name*="email" i]',
-      'input[name*="user" i]',
-      'input[name*="login" i]',
-      'input[type="text"]'
-    ]);
-    const passInput = await firstVisible(page, ['input[type="password"]']);
+    const userInput = await findUsernameField(page);
+    const passInput = await firstVisible(page, ['input[type="password"]', 'input[autocomplete="current-password"]']);
 
     if (!userInput || !passInput) {
       addLooseIssue('high', 'authentication', 'QADeck could not identify the username/password fields', `${loginUrl} · ${viewportName}`);
@@ -173,6 +189,7 @@ async function attemptLogin(page, project, addLooseIssue, viewportName) {
       'button[type="submit"]',
       'input[type="submit"]',
       'button:has-text("Login")',
+      'button:has-text("Log in")',
       'button:has-text("Sign in")'
     ]);
 
@@ -256,12 +273,35 @@ async function runAccessibility(page, addPageIssue) {
   }
 }
 
+function attachPageDiagnostics(page, addPageIssue) {
+  const onConsole = (msg) => {
+    if (msg.type() === 'error') addPageIssue('medium', 'console', 'Browser console error', msg.text());
+  };
+  const onPageError = (error) => addPageIssue('high', 'javascript', 'Uncaught JavaScript error', error.message);
+  const onRequestFailed = (request) => addPageIssue('medium', 'network', 'Network request failed', `${request.method()} ${request.url()} — ${request.failure()?.errorText || 'unknown error'}`);
+  const onResponse = (response) => {
+    if (response.status() >= 400) addPageIssue(severityForStatus(response.status()), 'http', `HTTP ${response.status()} response`, response.url());
+  };
+
+  page.on('console', onConsole);
+  page.on('pageerror', onPageError);
+  page.on('requestfailed', onRequestFailed);
+  page.on('response', onResponse);
+
+  return () => {
+    page.off('console', onConsole);
+    page.off('pageerror', onPageError);
+    page.off('requestfailed', onRequestFailed);
+    page.off('response', onResponse);
+  };
+}
+
 async function runProject(runId, project, options = {}) {
   const workerId = options.workerId || null;
   const runDir = path.join(artifactRoot, String(runId));
   const videoDir = path.join(runDir, 'videos');
   fs.mkdirSync(runDir, { recursive: true });
-  if (project.enable_video) fs.mkdirSync(videoDir, { recursive: true });
+  if (enabled(project.enable_video)) fs.mkdirSync(videoDir, { recursive: true });
 
   db.prepare(`
     UPDATE test_runs
@@ -284,9 +324,8 @@ async function runProject(runId, project, options = {}) {
 
   try {
     browser = await chromium.launch({ headless: true });
-    const viewportNames = parseViewports(project);
 
-    for (const viewportName of viewportNames) {
+    for (const viewportName of parseViewports(project)) {
       const viewport = VIEWPORTS[viewportName] || VIEWPORTS.desktop;
       let context;
       let page;
@@ -296,10 +335,11 @@ async function runProject(runId, project, options = {}) {
       try {
         context = await browser.newContext({
           viewport,
-          userAgent: `QADeck/0.3 Playwright QA Runner (${viewportName})`,
-          recordVideo: project.enable_video ? { dir: videoDir, size: viewport } : undefined
+          bypassCSP: true,
+          userAgent: `QADeck/0.4 Playwright QA Runner (${viewportName})`,
+          recordVideo: enabled(project.enable_video) ? { dir: videoDir, size: viewport } : undefined
         });
-        if (project.enable_trace) {
+        if (enabled(project.enable_trace)) {
           await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
           traceStarted = true;
         }
@@ -307,7 +347,7 @@ async function runProject(runId, project, options = {}) {
         videoHandle = page.video();
         page.setDefaultTimeout(pageTimeout);
 
-        db.prepare(`UPDATE test_runs SET current_url=?, heartbeat_at=CURRENT_TIMESTAMP WHERE id=?`).run(project.login_url || project.base_url, runId);
+        db.prepare('UPDATE test_runs SET current_url=?, heartbeat_at=CURRENT_TIMESTAMP WHERE id=?').run(project.login_url || project.base_url, runId);
         await attemptLogin(page, project, addLooseIssue, viewportName);
 
         const startUrl = cleanUrl(project.base_url, project.base_url);
@@ -323,7 +363,7 @@ async function runProject(runId, project, options = {}) {
           seen.add(url);
           if (dangerousPath.test(new URL(url).pathname)) continue;
 
-          db.prepare(`UPDATE test_runs SET current_url=?, heartbeat_at=CURRENT_TIMESTAMP WHERE id=?`).run(url, runId);
+          db.prepare('UPDATE test_runs SET current_url=?, heartbeat_at=CURRENT_TIMESTAMP WHERE id=?').run(`${viewportName}: ${url}`, runId);
 
           const pageIssues = [];
           const issueKeys = new Set();
@@ -333,20 +373,7 @@ async function runProject(runId, project, options = {}) {
             issueKeys.add(key);
             pageIssues.push({ severity, category, message, details: String(details || '') });
           };
-
-          const onConsole = (msg) => {
-            if (msg.type() === 'error') addPageIssue('medium', 'console', 'Browser console error', msg.text());
-          };
-          const onPageError = (error) => addPageIssue('high', 'javascript', 'Uncaught JavaScript error', error.message);
-          const onRequestFailed = (request) => addPageIssue('medium', 'network', 'Network request failed', `${request.method()} ${request.url()} — ${request.failure()?.errorText || 'unknown error'}`);
-          const onResponse = (response) => {
-            if (response.status() >= 400) addPageIssue(severityForStatus(response.status()), 'http', `HTTP ${response.status()} response`, response.url());
-          };
-
-          page.on('console', onConsole);
-          page.on('pageerror', onPageError);
-          page.on('requestfailed', onRequestFailed);
-          page.on('response', onResponse);
+          const detachDiagnostics = attachPageDiagnostics(page, addPageIssue);
 
           let mainStatus = null;
           const started = Date.now();
@@ -388,12 +415,12 @@ async function runProject(runId, project, options = {}) {
           } catch {}
 
           let accessibilityCount = 0;
-          if (project.enable_accessibility) accessibilityCount = await runAccessibility(page, addPageIssue);
+          if (enabled(project.enable_accessibility)) accessibilityCount = await runAccessibility(page, addPageIssue);
 
           let baselinePath = null;
           let diffPath = null;
           let visualChangePct = null;
-          if (project.enable_visual && fs.existsSync(screenshotAbsolute)) {
+          if (enabled(project.enable_visual) && fs.existsSync(screenshotAbsolute)) {
             const baseline = baselineInfo(project.id, viewportName, url);
             baselinePath = baseline.web;
             fs.mkdirSync(path.dirname(baseline.absolute), { recursive: true });
@@ -449,10 +476,7 @@ async function runProject(runId, project, options = {}) {
             }
           } catch {}
 
-          page.off('console', onConsole);
-          page.off('pageerror', onPageError);
-          page.off('requestfailed', onRequestFailed);
-          page.off('response', onResponse);
+          detachDiagnostics();
         }
       } catch (error) {
         addLooseIssue('high', 'runner', `Viewport run failed: ${viewportName}`, error.message);
