@@ -28,8 +28,29 @@ jobs:
       - name: Syntax check
         run: npm run check
 
+      - name: Compile EJS templates
+        run: node -e "const fs=require('fs'),path=require('path'),ejs=require('ejs'); for(const f of fs.readdirSync('views',{recursive:true})){if(String(f).endsWith('.ejs')) ejs.compile(fs.readFileSync(path.join('views',f),'utf8'),{filename:path.join('views',f)});} console.log('EJS OK');"
+
       - name: Database migration smoke test
         env:
           DATA_DIR: /tmp/qadeck-ci-data
           CREDENTIALS_KEY: ci-only-test-key
         run: node -e "const db=require('./src/db'); console.log(db.prepare('select 1 as ok').get()); db.close();"
+
+      - name: Web health smoke test
+        env:
+          DATA_DIR: /tmp/qadeck-ci-web
+          CREDENTIALS_KEY: ci-only-test-key
+          SESSION_SECRET: ci-session-secret
+          QADECK_ADMIN_EMAIL: admin@example.com
+          QADECK_ADMIN_PASSWORD: ci-password
+        run: |
+          node src/app.js >/tmp/qadeck-web.log 2>&1 &
+          APP_PID=$!
+          trap 'kill $APP_PID || true' EXIT
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:3000/health; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/qadeck-web.log
+          exit 1
