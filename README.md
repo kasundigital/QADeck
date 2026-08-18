@@ -2,7 +2,7 @@
 
 QADeck is a self-hosted, Docker-first web QA platform. Add projects, configure test logins, run background crawls or no-code browser scenarios, and review functional, visual, responsive and accessibility issues with screenshots, video and Playwright traces.
 
-## QADeck v0.3
+## QADeck v0.4
 
 ### Projects and execution
 
@@ -13,6 +13,7 @@ QADeck is a self-hosted, Docker-first web QA platform. Add projects, configure t
 - Live progress while a report is open
 - Automatic recovery/re-queue of interrupted worker jobs
 - Persistent SQLite data and QA artifacts in a Docker volume
+- Optional recurring QA crawls per project
 
 ### Login testing
 
@@ -86,6 +87,20 @@ Each project can contain reusable functional workflows. Supported steps currentl
 
 Scenario jobs run through the same background worker and report Pass / Fail / Skipped step results per configured viewport.
 
+### Scheduled QA
+
+A project can automatically queue a full QA crawl every:
+
+- 15 minutes
+- 30 minutes
+- 1 hour
+- 6 hours
+- 12 hours
+- 24 hours
+- 7 days
+
+The scheduler lives in the background worker, so QADeck does not need to be open in a browser. A scheduled crawl is not queued while another run for the same project is already queued or running.
+
 > **Safety model:** automatic crawl jobs remain intentionally read-only. Scenario jobs may click buttons and submit forms because those actions are explicitly configured by the QADeck user. Use staging/test accounts for scenarios that create, edit or delete data.
 
 ## Architecture
@@ -96,6 +111,7 @@ Browser
    v
 QADeck Web  ----> SQLite queue/database <---- QADeck Worker
    |                                         |
+   |                                         +--> Scheduler
    |                                         +--> Safe crawler
    |                                         +--> Scenario runner
    |                                         +--> Visual regression
@@ -135,7 +151,7 @@ docker compose ps
 ```
 
 - `qadeck` — web dashboard/API
-- `qadeck-worker` — persistent background Playwright worker
+- `qadeck-worker` — persistent background Playwright worker and scheduler
 
 Open:
 
@@ -173,13 +189,18 @@ The existing `qadeck_data` volume is preserved. QADeck applies additive SQLite m
 | `PAGE_TIMEOUT_MS` | `20000` | Browser/step timeout |
 | `WORKER_POLL_MS` | `1500` | Worker queue polling interval |
 | `WORKER_STALE_MINUTES` | `2` | Stale-run recovery threshold |
+| `SCHEDULE_CHECK_MS` | `30000` | How often the worker checks for due scheduled crawls |
 | `VISUAL_DIFF_THRESHOLD_PCT` | `0.25` | Percentage of changed pixels before a visual issue is reported |
+
+## CI validation
+
+The repository includes a GitHub Actions workflow that installs dependencies, performs Node syntax checks and runs a SQLite migration smoke test on pushes and pull requests to `main`.
 
 ## Next useful expansions
 
 - Browser interaction recorder that converts manual actions into scenarios
 - Multiple named test roles per project (admin/staff/customer)
-- Scheduled/recurring runs and notification channels
+- Notification channels for failed/successful scheduled runs
 - API request/assertion steps
 - Performance and Web Vitals budgets
 - GitHub/deployment-triggered regression runs
