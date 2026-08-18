@@ -4,7 +4,7 @@ const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
 const db = require('./db');
-const { encrypt } = require('./crypto');
+const { encrypt, decrypt } = require('./crypto');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -41,7 +41,49 @@ function requireAuth(req, res, next) {
   return res.redirect('/login');
 }
 
-app.get('/health', (req, res) => res.json({ status: 'ok', app: 'QADeck', version: '0.2.0', mode: 'web' }));
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null) return [];
+  return [value];
+}
+
+function parseExtraLoginFields(body) {
+  const names = asArray(body.extra_field_name);
+  const values = asArray(body.extra_field_value);
+  const selectors = asArray(body.extra_field_selector);
+  const types = asArray(body.extra_field_type);
+  const count = Math.max(names.length, values.length, selectors.length, types.length);
+  const fields = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const name = String(names[i] || '').trim();
+    const value = String(values[i] || '');
+    const selector = String(selectors[i] || '').trim();
+    const requestedType = String(types[i] || 'auto').toLowerCase();
+    const type = ['auto', 'text', 'password', 'select'].includes(requestedType) ? requestedType : 'auto';
+    if (!name && !selector) continue;
+    fields.push({ name, value, selector, type });
+  }
+
+  return fields.slice(0, 20);
+}
+
+function encryptExtraLoginFields(fields) {
+  if (!fields.length) return null;
+  return encrypt(JSON.stringify(fields));
+}
+
+function decryptExtraLoginFields(project) {
+  if (!project?.extra_login_fields_enc) return [];
+  try {
+    const parsed = JSON.parse(decrypt(project.extra_login_fields_enc));
+    return Array.isArray(parsed) ? parsed.slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
+app.get('/health', (req, res) => res.json({ status: 'ok', app: 'QADeck', version: '0.3.0', mode: 'web' }));
 
 app.get('/login', (req, res) => {
   if (req.session?.authenticated) return res.redirect('/');
@@ -85,19 +127,27 @@ app.get('/', (req, res) => {
   res.render('dashboard', { projects, totals, email: req.session.email });
 });
 
-app.get('/projects/new', (req, res) => res.render('project-form', { project: null, error: null }));
+app.get('/projects/new', (req, res) => res.render('project-form', { project: null, extraLoginFields: [], error: null }));
 
 app.post('/projects', (req, res) => {
   const name = String(req.body.name || '').trim();
   const baseUrl = String(req.body.base_url || '').trim();
-  if (!name || !baseUrl) return res.status(400).render('project-form', { project: req.body, error: 'Project name and Base URL are required.' });
+  const extraLoginFields = parseExtraLoginFields(req.body);
+  if (!name || !baseUrl) return res.status(400).render('project-form', { project: req.body, extraLoginFields, error: 'Project name and Base URL are required.' });
 
-  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: req.body, error: 'Please enter a valid Base URL.' }); }
+  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: req.body, extraLoginFields, error: 'Please enter a valid Base URL.' }); }
 
   const result = db.prepare(`
-    INSERT INTO projects (name, base_url, login_url, username, password_enc)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(name, baseUrl, String(req.body.login_url || '').trim() || null, String(req.body.username || '').trim() || null, encrypt(req.body.password || ''));
+    INSERT INTO projects (name, base_url, login_url, username, password_enc, extra_login_fields_enc)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    name,
+    baseUrl,
+    String(req.body.login_url || '').trim() || null,
+    String(req.body.username || '').trim() || null,
+    encrypt(req.body.password || ''),
+    encryptExtraLoginFields(extraLoginFields)
+  );
 
   res.redirect(`/projects/${result.lastInsertRowid}`);
 });
@@ -112,7 +162,7 @@ app.get('/projects/:id', (req, res) => {
 app.get('/projects/:id/edit', (req, res) => {
   const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
   if (!project) return res.status(404).send('Project not found');
-  res.render('project-form', { project, error: null });
+  res.render('project-form', { project, extraLoginFields: decryptExtraLoginFields(project), error: null });
 });
 
 app.post('/projects/:id', (req, res) => {
@@ -120,14 +170,26 @@ app.post('/projects/:id', (req, res) => {
   if (!project) return res.status(404).send('Project not found');
   const name = String(req.body.name || '').trim();
   const baseUrl = String(req.body.base_url || '').trim();
-  if (!name || !baseUrl) return res.status(400).render('project-form', { project: { ...project, ...req.body }, error: 'Project name and Base URL are required.' });
-  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: { ...project, ...req.body }, error: 'Please enter a valid Base URL.' }); }
+  const extraLoginFields = parseExtraLoginFields(req.body);
+  if (!name || !baseUrl) return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, error: 'Project name and Base URL are required.' });
+  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, error: 'Please enter a valid Base URL.' }); }
 
   const passwordSql = req.body.password ? ', password_enc=?' : '';
-  const params = [name, baseUrl, String(req.body.login_url || '').trim() || null, String(req.body.username || '').trim() || null];
+  const params = [
+    name,
+    baseUrl,
+    String(req.body.login_url || '').trim() || null,
+    String(req.body.username || '').trim() || null,
+    encryptExtraLoginFields(extraLoginFields)
+  ];
   if (req.body.password) params.push(encrypt(req.body.password));
   params.push(project.id);
-  db.prepare(`UPDATE projects SET name=?, base_url=?, login_url=?, username=?${passwordSql}, updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(...params);
+
+  db.prepare(`
+    UPDATE projects
+    SET name=?, base_url=?, login_url=?, username=?, extra_login_fields_enc=?${passwordSql}, updated_at=CURRENT_TIMESTAMP
+    WHERE id=?
+  `).run(...params);
   res.redirect(`/projects/${project.id}`);
 });
 
