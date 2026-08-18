@@ -1,7 +1,7 @@
 <%- include('partials/header', { title: 'Run #' + run.id, email: '' }) %>
 <div class="page-head">
   <div><span class="eyebrow">TEST REPORT</span><h1><%= run.project_name %> · Run #<%= run.id %></h1><p><%= run.base_url %></p></div>
-  <a class="btn secondary" href="/projects/<%= run.project_id %>">← Back to project</a>
+  <div class="head-actions"><a class="btn secondary" href="/projects/<%= run.project_id %>">← Back to project</a><% if (run.trace_path) { %><a class="btn secondary" href="<%= run.trace_path %>" target="_blank">Trace</a><% } %><% if (run.video_path) { %><a class="btn secondary" href="<%= run.video_path %>" target="_blank">Video</a><% } %></div>
 </div>
 
 <% if (run.status === 'queued' || run.status === 'running') { %>
@@ -9,7 +9,7 @@
   <span class="spinner"></span>
   <div>
     <strong>QA test is <%= run.status %> in the background…</strong>
-    <p>You can close QADeck. The worker will continue running this test. This page refreshes automatically while it is open.</p>
+    <p>You can close QADeck. The worker continues this test and stores results continuously.</p>
     <% if (run.current_url) { %><p><strong>Now testing:</strong> <%= run.current_url %></p><% } %>
   </div>
 </div>
@@ -19,28 +19,58 @@
 
 <div class="stats-grid report-stats">
   <div class="stat-card"><span>Status</span><strong class="capitalize"><%= run.status %></strong></div>
-  <div class="stat-card"><span>Pages scanned</span><strong><%= run.pages_scanned %></strong></div>
+  <div class="stat-card"><span>Pages / views</span><strong><%= run.pages_scanned %></strong></div>
   <div class="stat-card"><span>Issues</span><strong class="<%= run.issues_count ? 'text-danger' : 'text-success' %>"><%= run.issues_count %></strong></div>
-  <div class="stat-card"><span>Clean pages</span><strong><%= run.clean_pages %></strong></div>
+  <div class="stat-card"><span>Clean views</span><strong><%= run.clean_pages %></strong></div>
 </div>
 
+<% if (run.trace_path || run.video_path) { %>
+<div class="artifact-strip">
+  <div><strong>Debug artifacts</strong><span>Use these when a browser run is difficult to reproduce manually.</span></div>
+  <div class="head-actions"><% if (run.trace_path) { %><a class="btn secondary" href="<%= run.trace_path %>" target="_blank">Download trace</a><% } %><% if (run.video_path) { %><a class="btn secondary" href="<%= run.video_path %>" target="_blank">Open video</a><% } %></div>
+</div>
+<% } %>
+
 <% if (issues.length) { %>
-<div class="section-head"><div><h2>Issues</h2><p>Detected browser, HTTP, JavaScript, network, asset and responsive problems. Results appear here while the worker is still running.</p></div></div>
+<div class="section-head"><div><h2>Issues</h2><p>HTTP, JavaScript, network, accessibility, responsive and visual-regression findings appear here while the run is active.</p></div></div>
 <div class="issues-list">
 <% issues.forEach((issue) => { %>
 <article class="issue-card">
-  <div class="issue-bar"><span class="severity <%= issueClass(issue.severity) %>"><%= issue.severity %></span><span class="category"><%= issue.category %></span></div>
+  <div class="issue-bar"><span class="severity <%= issueClass(issue.severity) %>"><%= issue.severity %></span><span class="category"><%= issue.category %></span><% if (issue.viewport) { %><span class="category"><%= issue.viewport %></span><% } %></div>
   <div class="issue-body"><div class="issue-copy"><h3><%= issue.message %></h3><% if (issue.page_url) { %><p class="issue-url"><%= issue.page_url %></p><% } %><% if (issue.details) { %><pre><%= issue.details %></pre><% } %></div>
   <% if (issue.screenshot_path) { %><a href="<%= issue.screenshot_path %>" target="_blank" class="thumb"><img src="<%= issue.screenshot_path %>" alt="Failure screenshot"></a><% } %></div>
 </article>
 <% }) %>
 </div>
-<% } else if (run.status === 'completed') { %><div class="success-panel"><span>✓</span><div><h2>No issues detected</h2><p>The generic safe crawl completed without detecting HTTP, browser-console, failed-network, broken-image or overflow issues.</p></div></div><% } %>
+<% } else if (run.status === 'completed') { %><div class="success-panel"><span>✓</span><div><h2>No issues detected</h2><p>The configured QA checks completed without finding reportable problems.</p></div></div><% } %>
 
 <% if (pages.length) { %>
-<div class="section-head"><div><h2>Page timeline</h2><p>Every page QADeck has visited during this run.</p></div></div>
-<div class="page-grid">
-<% pages.forEach((page) => { %><article class="page-card"><a href="<%= page.screenshot_path %>" target="_blank"><img src="<%= page.screenshot_path %>" alt="Screenshot"></a><div><strong><%= page.title || 'Untitled page' %></strong><span><%= page.status_code || '—' %> · <%= page.duration_ms %> ms</span><small><%= page.url %></small></div></article><% }) %>
+<div class="section-head"><div><h2>Page & device timeline</h2><p>Each card is one URL tested at one configured viewport.</p></div></div>
+<div class="page-grid enhanced-pages">
+<% pages.forEach((page) => { %>
+<article class="page-card qa-page-card">
+  <a href="<%= page.screenshot_path %>" target="_blank" class="page-shot"><img src="<%= page.screenshot_path %>" alt="Current screenshot"></a>
+  <div class="page-card-body">
+    <div class="page-card-head"><strong><%= page.title || 'Untitled page' %></strong><span class="viewport-badge"><%= page.viewport || 'desktop' %></span></div>
+    <span><%= page.status_code || '—' %> · <%= page.duration_ms %> ms</span>
+    <small title="<%= page.url %>"><%= page.url %></small>
+    <div class="mini-metrics">
+      <span>Accessibility <strong><%= page.accessibility_count || 0 %></strong></span>
+      <span>Visual <strong><%= page.visual_change_pct === null || page.visual_change_pct === undefined ? '—' : Number(page.visual_change_pct).toFixed(2) + '%' %></strong></span>
+    </div>
+    <% if (page.baseline_path) { %>
+      <div class="visual-actions">
+        <a href="<%= page.baseline_path %>" target="_blank">Baseline</a>
+        <a href="<%= page.screenshot_path %>" target="_blank">Current</a>
+        <% if (page.diff_path) { %><a href="<%= page.diff_path %>" target="_blank">Diff</a><% } %>
+      </div>
+      <% if (Number(page.visual_change_pct || 0) > 0) { %>
+        <form method="post" action="/pages/<%= page.id %>/approve-baseline" onsubmit="return confirm('Approve this current screenshot as the new visual baseline?')"><button class="btn secondary small-btn" type="submit">Approve new baseline</button></form>
+      <% } %>
+    <% } %>
+  </div>
+</article>
+<% }) %>
 </div>
 <% } %>
 <%- include('partials/footer') %>
