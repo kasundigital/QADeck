@@ -5,7 +5,6 @@ const session = require('express-session');
 const helmet = require('helmet');
 const db = require('./db');
 const { encrypt } = require('./crypto');
-const { runProject } = require('./runner');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -42,7 +41,7 @@ function requireAuth(req, res, next) {
   return res.redirect('/login');
 }
 
-app.get('/health', (req, res) => res.json({ status: 'ok', app: 'QADeck', version: '0.1.0' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', app: 'QADeck', version: '0.2.0', mode: 'web' }));
 
 app.get('/login', (req, res) => {
   if (req.session?.authenticated) return res.redirect('/');
@@ -140,13 +139,16 @@ app.post('/projects/:id/delete', (req, res) => {
 app.post('/projects/:id/run', (req, res) => {
   const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
   if (!project) return res.status(404).send('Project not found');
-  const active = db.prepare("SELECT id FROM test_runs WHERE project_id=? AND status IN ('queued','running') LIMIT 1").get(project.id);
+
+  const active = db.prepare("SELECT id FROM test_runs WHERE project_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(project.id);
   if (active) return res.redirect(`/runs/${active.id}`);
 
-  const result = db.prepare("INSERT INTO test_runs (project_id, status) VALUES (?, 'queued')").run(project.id);
-  const runId = Number(result.lastInsertRowid);
-  setImmediate(() => runProject(runId, project));
-  res.redirect(`/runs/${runId}`);
+  const result = db.prepare(`
+    INSERT INTO test_runs (project_id, status, queued_at)
+    VALUES (?, 'queued', CURRENT_TIMESTAMP)
+  `).run(project.id);
+
+  res.redirect(`/runs/${Number(result.lastInsertRowid)}`);
 });
 
 app.get('/runs/:id', (req, res) => {
@@ -165,7 +167,18 @@ app.get('/runs/:id', (req, res) => {
 app.get('/api/runs/:id', (req, res) => {
   const run = db.prepare('SELECT * FROM test_runs WHERE id=?').get(req.params.id);
   if (!run) return res.status(404).json({ error: 'Not found' });
-  res.json(run);
+
+  const latestPages = db.prepare(`
+    SELECT id, url, title, status_code, screenshot_path, duration_ms
+    FROM test_pages WHERE run_id=? ORDER BY id DESC LIMIT 5
+  `).all(run.id);
+
+  const latestIssues = db.prepare(`
+    SELECT id, severity, category, message, details, page_id
+    FROM test_issues WHERE run_id=? ORDER BY id DESC LIMIT 10
+  `).all(run.id);
+
+  res.json({ ...run, latest_pages: latestPages, latest_issues: latestIssues });
 });
 
 app.use((err, req, res, next) => {
@@ -174,5 +187,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`QADeck listening on http://0.0.0.0:${port}`);
+  console.log(`QADeck web listening on http://0.0.0.0:${port}`);
 });
