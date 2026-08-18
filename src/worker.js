@@ -2,6 +2,7 @@ const os = require('os');
 const crypto = require('crypto');
 const db = require('./db');
 const { runProject } = require('./runner');
+const { runScenario } = require('./scenario-runner');
 
 const pollMs = Math.max(500, Number(process.env.WORKER_POLL_MS || 1500));
 const staleMinutes = Math.max(1, Number(process.env.WORKER_STALE_MINUTES || 2));
@@ -86,7 +87,11 @@ async function loop() {
 
     console.log(`[QADeck worker] Running ${job.runType} job #${job.runId} for ${job.project.name}.`);
     try {
-      await runProject(job.runId, job.project, { workerId, runType: job.runType, scenarioId: job.scenarioId });
+      if (job.runType === 'scenario') {
+        await runScenario(job.runId, job.project, job.scenarioId, { workerId });
+      } else {
+        await runProject(job.runId, job.project, { workerId });
+      }
     } catch (error) {
       console.error(`[QADeck worker] Run #${job.runId} crashed:`, error);
       db.prepare(`
