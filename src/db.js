@@ -74,10 +74,24 @@ function ensureColumn(table, name, definition) {
 }
 
 ensureColumn('projects', 'extra_login_fields_enc', 'TEXT');
+ensureColumn('projects', 'viewport_profiles', `TEXT NOT NULL DEFAULT '["desktop"]'`);
+ensureColumn('projects', 'enable_visual', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('projects', 'enable_accessibility', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('projects', 'enable_trace', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('projects', 'enable_video', 'INTEGER NOT NULL DEFAULT 1');
+
 ensureColumn('test_runs', 'queued_at', 'TEXT');
 ensureColumn('test_runs', 'heartbeat_at', 'TEXT');
 ensureColumn('test_runs', 'current_url', 'TEXT');
 ensureColumn('test_runs', 'worker_id', 'TEXT');
+ensureColumn('test_runs', 'trace_path', 'TEXT');
+ensureColumn('test_runs', 'video_path', 'TEXT');
+
+ensureColumn('test_pages', 'viewport', `TEXT NOT NULL DEFAULT 'desktop'`);
+ensureColumn('test_pages', 'baseline_path', 'TEXT');
+ensureColumn('test_pages', 'diff_path', 'TEXT');
+ensureColumn('test_pages', 'visual_change_pct', 'REAL');
+ensureColumn('test_pages', 'accessibility_count', 'INTEGER NOT NULL DEFAULT 0');
 
 db.prepare(`
   UPDATE test_runs
