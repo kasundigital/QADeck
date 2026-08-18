@@ -4,19 +4,65 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Sign in · QADeck</title>
+  <link rel="icon" type="image/svg+xml" href="/static/brand/qadeck-icon.svg">
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/brand.css">
 </head>
-<body class="login-page">
-  <div class="login-card">
-    <div class="login-brand"><span class="brand-mark large">Q</span><div><h1>QADeck</h1><p>Automated Web QA Console</p></div></div>
-    <h2>Welcome back</h2>
-    <p class="muted">Sign in to manage projects and test runs.</p>
-    <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
-    <form method="post" action="/login" class="stack-form">
-      <label>Email<input type="email" name="email" required autofocus></label>
-      <label>Password<input type="password" name="password" required></label>
-      <button class="btn primary full" type="submit">Sign in</button>
-    </form>
-  </div>
+<body class="login-page brand-login">
+  <section class="login-showcase" aria-hidden="true">
+    <div class="showcase-copy">
+      <span class="showcase-kicker">Self-hosted web QA</span>
+      <h1>Test smarter.<span>Ship with confidence.</span></h1>
+      <p>Run browser tests, visual regression, accessibility checks, scenarios and scheduled QA from one private workspace.</p>
+      <div class="showcase-features">
+        <div class="showcase-feature"><strong>Background QA</strong><span>Tests keep running even after you close the browser.</span></div>
+        <div class="showcase-feature"><strong>Visual regression</strong><span>Compare approved baselines with current UI screenshots.</span></div>
+        <div class="showcase-feature"><strong>Scenario testing</strong><span>Build reusable browser workflows without writing test code.</span></div>
+        <div class="showcase-feature"><strong>Private by design</strong><span>Your projects, credentials and test evidence stay self-hosted.</span></div>
+      </div>
+    </div>
+    <div class="showcase-orbit"><span>⌘</span><span>✓</span><span>⌁</span></div>
+  </section>
+
+  <section class="login-panel">
+    <div class="login-shell">
+      <img class="login-logo" src="/static/brand/qadeck-logo.svg" alt="QADeck">
+      <div class="login-card brand-card">
+        <h2>Welcome back</h2>
+        <p class="muted">Sign in to your QADeck workspace</p>
+        <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
+        <form method="post" action="/login" class="stack-form">
+          <label>Email
+            <div class="input-wrap">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6.5h16v11H4z" stroke="currentColor" stroke-width="1.8" rx="2"/><path d="m5 8 7 5 7-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <input type="email" name="email" required autofocus autocomplete="username" placeholder="you@example.com">
+            </div>
+          </label>
+          <label>Password
+            <div class="input-wrap">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <input id="login-password" type="password" name="password" required autocomplete="current-password" placeholder="Enter your password">
+              <button class="password-toggle" type="button" id="password-toggle" aria-label="Show password">◉</button>
+            </div>
+          </label>
+          <button class="btn primary full" type="submit">Sign in →</button>
+        </form>
+        <div class="login-security"><span>◇</span><span><strong>Secure · Private</strong> · Under your control</span></div>
+      </div>
+      <div class="login-footnote">QADeck · <span>Web QA Console</span></div>
+    </div>
+  </section>
+<script>
+(() => {
+  const input = document.getElementById('login-password');
+  const toggle = document.getElementById('password-toggle');
+  toggle.addEventListener('click', () => {
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    toggle.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+    toggle.textContent = showing ? '◉' : '◎';
+  });
+})();
+</script>
 </body>
 </html>
