@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="public/brand/qadeck-logo.svg" alt="QADeck" width="480">
+</p>
+
+<p align="center"><strong>Self-hosted web QA automation for browser tests, visual regression, accessibility, scenarios, performance and reports.</strong></p>
+
 # QADeck
 
 QADeck is a self-hosted, Docker-first web QA platform powered by Playwright. It runs background browser/API tests, captures screenshots/video/traces, checks UI regressions, accessibility and performance, and keeps results in one dashboard.
@@ -195,6 +201,14 @@ If these are blank, AI summaries are simply disabled and the rest of QADeck work
 | `WORKER_STALE_MINUTES` | `2` | Interrupted-run recovery threshold |
 | `SCHEDULE_CHECK_MS` | `30000` | Scheduled-run check frequency |
 | `VISUAL_DIFF_THRESHOLD_PCT` | `0.25` | Visual difference threshold |
+
+## Brand assets
+
+QADeck vector assets used by the application are stored under `public/brand/`:
+
+- `qadeck-logo.svg` — standard wordmark for light backgrounds
+- `qadeck-logo-light.svg` — wordmark for dark backgrounds
+- `qadeck-icon.svg` — app icon / favicon
 
 ## Safety
 
