@@ -92,13 +92,28 @@ async function attemptLogin(page, project, addLooseIssue) {
   }
 }
 
-async function runProject(runId, project) {
+function updateProgress(runId, pagesScanned, totalIssues, cleanPages, currentUrl = null) {
+  db.prepare(`
+    UPDATE test_runs
+    SET pages_scanned=?, issues_count=?, clean_pages=?, current_url=?, heartbeat_at=CURRENT_TIMESTAMP
+    WHERE id=? AND status='running'
+  `).run(pagesScanned, totalIssues, cleanPages, currentUrl, runId);
+}
+
+async function runProject(runId, project, options = {}) {
+  const workerId = options.workerId || null;
   const runDir = path.join(artifactRoot, String(runId));
   fs.mkdirSync(runDir, { recursive: true });
 
-  db.prepare(`UPDATE test_runs SET status='running', started_at=CURRENT_TIMESTAMP WHERE id=?`).run(runId);
+  db.prepare(`
+    UPDATE test_runs
+    SET status='running', started_at=COALESCE(started_at, CURRENT_TIMESTAMP),
+        heartbeat_at=CURRENT_TIMESTAMP, worker_id=COALESCE(worker_id, ?)
+    WHERE id=?
+  `).run(workerId, runId);
 
   let browser;
+  let context;
   let totalIssues = 0;
   let pagesScanned = 0;
   let cleanPages = 0;
@@ -110,13 +125,14 @@ async function runProject(runId, project) {
 
   try {
     browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({
+    context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
-      userAgent: 'QADeck/0.1 Playwright QA Runner'
+      userAgent: 'QADeck/0.2 Playwright QA Runner'
     });
     const page = await context.newPage();
     page.setDefaultTimeout(pageTimeout);
 
+    db.prepare(`UPDATE test_runs SET current_url=?, heartbeat_at=CURRENT_TIMESTAMP WHERE id=?`).run(project.login_url || project.base_url, runId);
     await attemptLogin(page, project, addLooseIssue);
 
     const startUrl = cleanUrl(project.base_url, project.base_url);
@@ -130,6 +146,8 @@ async function runProject(runId, project) {
       if (!url || seen.has(url)) continue;
       seen.add(url);
       if (dangerousPath.test(new URL(url).pathname)) continue;
+
+      db.prepare(`UPDATE test_runs SET current_url=?, heartbeat_at=CURRENT_TIMESTAMP WHERE id=?`).run(url, runId);
 
       const pageIssues = [];
       const requestIssueKeys = new Set();
@@ -208,6 +226,7 @@ async function runProject(runId, project) {
       totalIssues += pageIssues.length;
       pagesScanned += 1;
       if (pageIssues.length === 0) cleanPages += 1;
+      updateProgress(runId, pagesScanned, totalIssues, cleanPages, url);
 
       try {
         const links = await page.locator('a[href]').evaluateAll((anchors) => anchors.map((a) => a.href));
@@ -235,21 +254,25 @@ async function runProject(runId, project) {
       looseStmt.run(runId, issue.severity, issue.category, issue.message, issue.details);
     }
     totalIssues += looseIssues.length;
+    updateProgress(runId, pagesScanned, totalIssues, cleanPages, null);
 
     db.prepare(`
       UPDATE test_runs
-      SET status='completed', completed_at=CURRENT_TIMESTAMP, pages_scanned=?, issues_count=?, clean_pages=?
+      SET status='completed', completed_at=CURRENT_TIMESTAMP,
+          pages_scanned=?, issues_count=?, clean_pages=?,
+          current_url=NULL, heartbeat_at=NULL, worker_id=NULL
       WHERE id=?
     `).run(pagesScanned, totalIssues, cleanPages, runId);
-
-    await context.close();
   } catch (error) {
     db.prepare(`
       UPDATE test_runs
-      SET status='failed', completed_at=CURRENT_TIMESTAMP, pages_scanned=?, issues_count=?, clean_pages=?, error_message=?
+      SET status='failed', completed_at=CURRENT_TIMESTAMP,
+          pages_scanned=?, issues_count=?, clean_pages=?, error_message=?,
+          current_url=NULL, heartbeat_at=NULL, worker_id=NULL
       WHERE id=?
     `).run(pagesScanned, totalIssues, cleanPages, error.message, runId);
   } finally {
+    if (context) await context.close().catch(() => {});
     if (browser) await browser.close().catch(() => {});
   }
 }
