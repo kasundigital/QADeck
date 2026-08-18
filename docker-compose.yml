@@ -21,7 +21,6 @@ services:
 
   qadeck-worker:
     build: .
-    container_name: qadeck-worker
     restart: unless-stopped
     init: true
     command: ["node", "src/worker.js"]
