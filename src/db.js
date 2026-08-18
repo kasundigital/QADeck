@@ -119,6 +119,9 @@ ensureColumn('projects', 'enable_visual', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('projects', 'enable_accessibility', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('projects', 'enable_trace', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('projects', 'enable_video', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('projects', 'schedule_enabled', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('projects', 'schedule_interval_minutes', 'INTEGER NOT NULL DEFAULT 1440');
+ensureColumn('projects', 'schedule_last_queued_at', 'TEXT');
 
 ensureColumn('test_scenarios', 'use_project_login', 'INTEGER NOT NULL DEFAULT 1');
 ensureColumn('scenario_step_results', 'viewport', `TEXT NOT NULL DEFAULT 'desktop'`);
