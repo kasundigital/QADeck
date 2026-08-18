@@ -1,0 +1,57 @@
+<%- include('partials/header', { title: scenario && scenario.id ? 'Edit Scenario' : 'New Scenario', email: '' }) %>
+<%
+  const editing = Boolean(scenario && scenario.id);
+  const rows = steps && steps.length ? steps : [{ action: 'visit', target: '', value: '/' }];
+%>
+<div class="page-head compact"><div><span class="eyebrow">SCENARIO BUILDER</span><h1><%= editing ? 'Edit scenario' : 'New scenario' %></h1><p><%= project.name %> · Build a repeatable browser workflow without writing Playwright code.</p></div></div>
+<div class="form-card wide-form">
+  <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
+  <form method="post" action="<%= editing ? '/scenarios/' + scenario.id : '/projects/' + project.id + '/scenarios' %>" class="stack-form">
+    <label>Scenario name<input name="name" required placeholder="Create customer" value="<%= scenario?.name || '' %>"></label>
+    <label>Description<input name="description" placeholder="Login, create a customer and verify success" value="<%= scenario?.description || '' %>"></label>
+
+    <div class="subsection-head"><div><h4>Workflow steps</h4><p>Use CSS selectors, Playwright text selectors such as <code>text=Login</code>, or URLs/paths where appropriate.</p></div><button class="btn secondary" type="button" id="add-step">＋ Add step</button></div>
+    <div id="scenario-steps" class="scenario-step-list">
+      <% rows.forEach((step, index) => { %>
+      <div class="scenario-step-row">
+        <span class="step-number"><%= index + 1 %></span>
+        <label>Action<select name="step_action">
+          <% [['visit','Visit URL'],['click','Click'],['fill','Fill field'],['select','Select option'],['check','Check'],['uncheck','Uncheck'],['expect_text','Expect text'],['expect_url','Expect URL'],['wait','Wait'],['screenshot','Screenshot']].forEach(([value,label]) => { %><option value="<%= value %>" <%= step.action === value ? 'selected' : '' %>><%= label %></option><% }) %>
+        </select></label>
+        <label>Target<input name="step_target" placeholder="CSS selector or text=Button" value="<%= step.target || '' %>"></label>
+        <label>Value<input name="step_value" placeholder="Value, URL, text or wait ms" value="<%= step.value || '' %>"></label>
+        <button type="button" class="icon-remove remove-step" aria-label="Remove step">×</button>
+      </div>
+      <% }) %>
+    </div>
+    <div class="scenario-help">
+      <strong>Examples</strong>
+      <span><b>Visit:</b> value = <code>/customers</code></span>
+      <span><b>Click:</b> target = <code>text=Add Customer</code></span>
+      <span><b>Fill:</b> target = <code>#name</code>, value = <code>QA Test User</code></span>
+      <span><b>Expect text:</b> target = <code>.alert-success</code>, value = <code>Customer created</code></span>
+    </div>
+    <div class="form-actions"><a class="btn secondary" href="/projects/<%= project.id %>">Cancel</a><button class="btn primary" type="submit"><%= editing ? 'Save scenario' : 'Create scenario' %></button></div>
+  </form>
+</div>
+
+<template id="scenario-step-template">
+  <div class="scenario-step-row">
+    <span class="step-number"></span>
+    <label>Action<select name="step_action"><option value="visit">Visit URL</option><option value="click">Click</option><option value="fill">Fill field</option><option value="select">Select option</option><option value="check">Check</option><option value="uncheck">Uncheck</option><option value="expect_text">Expect text</option><option value="expect_url">Expect URL</option><option value="wait">Wait</option><option value="screenshot">Screenshot</option></select></label>
+    <label>Target<input name="step_target" placeholder="CSS selector or text=Button"></label>
+    <label>Value<input name="step_value" placeholder="Value, URL, text or wait ms"></label>
+    <button type="button" class="icon-remove remove-step" aria-label="Remove step">×</button>
+  </div>
+</template>
+<script>
+(() => {
+  const list = document.getElementById('scenario-steps');
+  const template = document.getElementById('scenario-step-template');
+  const renumber = () => [...list.querySelectorAll('.scenario-step-row')].forEach((row, index) => row.querySelector('.step-number').textContent = index + 1);
+  document.getElementById('add-step').addEventListener('click', () => { list.appendChild(template.content.cloneNode(true)); renumber(); });
+  list.addEventListener('click', (event) => { const button = event.target.closest('.remove-step'); if (button && list.children.length > 1) { button.closest('.scenario-step-row').remove(); renumber(); } });
+  renumber();
+})();
+</script>
+<%- include('partials/footer') %>
