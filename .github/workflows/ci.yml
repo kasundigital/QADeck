@@ -1,10 +1,11 @@
-name: QADeck CI
+name: QADeck CI & Deploy
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -54,3 +55,96 @@ jobs:
           done
           cat /tmp/qadeck-web.log
           exit 1
+
+  deploy:
+    name: Deploy production Docker server
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AUTO_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: qadeck-production-deploy
+      cancel-in-progress: true
+    steps:
+      - name: Configure deployment SSH key
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
+            echo "Deployment secrets are not configured."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/qadeck_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/qadeck_deploy ~/.ssh/known_hosts
+
+      - name: Deploy QADeck
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is required}"
+          : "${DEPLOY_USER:?DEPLOY_USER secret is required}"
+          PORT="${DEPLOY_PORT:-22}"
+
+          ssh \
+            -i ~/.ssh/qadeck_deploy \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -p "$PORT" \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/QADeck
+
+          PREVIOUS_SHA="$(git rev-parse HEAD)"
+          echo "Current revision: $PREVIOUS_SHA"
+
+          git fetch origin main
+          git reset --hard origin/main
+          echo "Deploying revision: $(git rev-parse HEAD)"
+
+          rollback() {
+            echo "Deployment failed. Rolling back to $PREVIOUS_SHA"
+            git reset --hard "$PREVIOUS_SHA"
+            docker compose up -d --build --remove-orphans || true
+          }
+          trap rollback ERR
+
+          docker compose up -d --build --remove-orphans
+
+          WEB_OK=0
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+              WEB_OK=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$WEB_OK" -ne 1 ]; then
+            echo "QADeck web health check failed."
+            docker compose ps
+            docker compose logs --tail=150 qadeck || true
+            false
+          fi
+
+          if ! docker compose ps --status running --services | grep -qx 'qadeck-worker'; then
+            echo "QADeck background worker is not running."
+            docker compose ps
+            docker compose logs --tail=150 qadeck-worker || true
+            false
+          fi
+
+          trap - ERR
+          docker compose ps
+          echo "QADeck deployment completed successfully."
+          REMOTE
