@@ -10,7 +10,6 @@ services:
       - .env
     volumes:
       - qadeck_data:/app/data
-    shm_size: "1gb"
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -19,6 +18,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  qadeck-worker:
+    build: .
+    container_name: qadeck-worker
+    restart: unless-stopped
+    init: true
+    command: ["node", "src/worker.js"]
+    env_file:
+      - .env
+    volumes:
+      - qadeck_data:/app/data
+    shm_size: "1gb"
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      qadeck:
+        condition: service_healthy
+    stop_grace_period: 30s
 
 volumes:
   qadeck_data:
