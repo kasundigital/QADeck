@@ -13,6 +13,7 @@ const dataDir = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'd
 const artifactRoot = path.join(dataDir, 'artifacts');
 const VIEWPORT_OPTIONS = ['desktop', 'laptop', 'tablet', 'mobile', 'small-mobile'];
 const SCENARIO_ACTIONS = ['visit', 'click', 'fill', 'select', 'check', 'uncheck', 'expect_text', 'expect_url', 'wait', 'screenshot'];
+const SCHEDULE_INTERVALS = [15, 30, 60, 360, 720, 1440, 10080];
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(process.cwd(), 'views'));
@@ -109,6 +110,11 @@ function featureValue(body, name) {
   return body[name] === '1' ? 1 : 0;
 }
 
+function parseScheduleInterval(body) {
+  const value = Number(body.schedule_interval_minutes || 1440);
+  return SCHEDULE_INTERVALS.includes(value) ? value : 1440;
+}
+
 function parseScenarioSteps(body) {
   const actions = asArray(body.step_action);
   const targets = asArray(body.step_target);
@@ -118,22 +124,18 @@ function parseScenarioSteps(body) {
   for (let i = 0; i < count; i += 1) {
     const action = String(actions[i] || '').trim().toLowerCase();
     if (!SCENARIO_ACTIONS.includes(action)) continue;
-    steps.push({
-      action,
-      target: String(targets[i] || '').trim(),
-      value: String(values[i] || '')
-    });
+    steps.push({ action, target: String(targets[i] || '').trim(), value: String(values[i] || '') });
   }
   return steps.slice(0, 100);
 }
 
 function saveScenarioSteps(scenarioId, steps) {
-  db.prepare('DELETE FROM scenario_steps WHERE scenario_id=?').run(scenarioId);
-  const insert = db.prepare('INSERT INTO scenario_steps (scenario_id, position, action, target, value) VALUES (?, ?, ?, ?, ?)');
-  const transaction = db.transaction(() => {
+  const replace = db.transaction(() => {
+    db.prepare('DELETE FROM scenario_steps WHERE scenario_id=?').run(scenarioId);
+    const insert = db.prepare('INSERT INTO scenario_steps (scenario_id, position, action, target, value) VALUES (?, ?, ?, ?, ?)');
     steps.forEach((step, index) => insert.run(scenarioId, index + 1, step.action, step.target || null, step.value || null));
   });
-  transaction();
+  replace();
 }
 
 function artifactAbsolute(webPath) {
@@ -144,7 +146,7 @@ function artifactAbsolute(webPath) {
   return resolved;
 }
 
-app.get('/health', (req, res) => res.json({ status: 'ok', app: 'QADeck', version: '0.3.0', mode: 'web' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', app: 'QADeck', version: '0.4.0', mode: 'web' }));
 
 app.get('/login', (req, res) => {
   if (req.session?.authenticated) return res.redirect('/');
@@ -200,14 +202,17 @@ app.post('/projects', (req, res) => {
   const baseUrl = String(req.body.base_url || '').trim();
   const extraLoginFields = parseExtraLoginFields(req.body);
   const viewportProfiles = parseViewportProfiles(req.body);
+  const scheduleEnabled = featureValue(req.body, 'schedule_enabled');
+  const scheduleInterval = parseScheduleInterval(req.body);
   if (!name || !baseUrl) return res.status(400).render('project-form', { project: req.body, extraLoginFields, viewportProfiles, error: 'Project name and Base URL are required.' });
   try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: req.body, extraLoginFields, viewportProfiles, error: 'Please enter a valid Base URL.' }); }
 
   const result = db.prepare(`
     INSERT INTO projects (
       name, base_url, login_url, username, password_enc, extra_login_fields_enc,
-      viewport_profiles, enable_visual, enable_accessibility, enable_trace, enable_video
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      viewport_profiles, enable_visual, enable_accessibility, enable_trace, enable_video,
+      schedule_enabled, schedule_interval_minutes, schedule_last_queued_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END)
   `).run(
     name,
     baseUrl,
@@ -219,7 +224,10 @@ app.post('/projects', (req, res) => {
     featureValue(req.body, 'enable_visual'),
     featureValue(req.body, 'enable_accessibility'),
     featureValue(req.body, 'enable_trace'),
-    featureValue(req.body, 'enable_video')
+    featureValue(req.body, 'enable_video'),
+    scheduleEnabled,
+    scheduleInterval,
+    scheduleEnabled
   );
 
   res.redirect(`/projects/${result.lastInsertRowid}`);
@@ -254,6 +262,8 @@ app.post('/projects/:id', (req, res) => {
   const baseUrl = String(req.body.base_url || '').trim();
   const extraLoginFields = parseExtraLoginFields(req.body);
   const viewportProfiles = parseViewportProfiles(req.body);
+  const scheduleEnabled = featureValue(req.body, 'schedule_enabled');
+  const scheduleInterval = parseScheduleInterval(req.body);
   if (!name || !baseUrl) return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, viewportProfiles, error: 'Project name and Base URL are required.' });
   try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, viewportProfiles, error: 'Please enter a valid Base URL.' }); }
 
@@ -268,7 +278,10 @@ app.post('/projects/:id', (req, res) => {
     featureValue(req.body, 'enable_visual'),
     featureValue(req.body, 'enable_accessibility'),
     featureValue(req.body, 'enable_trace'),
-    featureValue(req.body, 'enable_video')
+    featureValue(req.body, 'enable_video'),
+    scheduleEnabled,
+    scheduleInterval,
+    scheduleEnabled
   ];
   if (req.body.password) params.push(encrypt(req.body.password));
   params.push(project.id);
@@ -276,7 +289,9 @@ app.post('/projects/:id', (req, res) => {
   db.prepare(`
     UPDATE projects
     SET name=?, base_url=?, login_url=?, username=?, extra_login_fields_enc=?,
-        viewport_profiles=?, enable_visual=?, enable_accessibility=?, enable_trace=?, enable_video=?
+        viewport_profiles=?, enable_visual=?, enable_accessibility=?, enable_trace=?, enable_video=?,
+        schedule_enabled=?, schedule_interval_minutes=?,
+        schedule_last_queued_at=CASE WHEN ?=1 THEN COALESCE(schedule_last_queued_at,CURRENT_TIMESTAMP) ELSE NULL END
         ${passwordSql}, updated_at=CURRENT_TIMESTAMP
     WHERE id=?
   `).run(...params);
@@ -366,7 +381,7 @@ app.get('/runs/:id', (req, res) => {
     ORDER BY CASE i.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, i.id
   `).all(run.id);
   const scenario = run.scenario_id ? db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(run.scenario_id) : null;
-  const stepResults = run.scenario_id ? db.prepare('SELECT * FROM scenario_step_results WHERE run_id=? ORDER BY position').all(run.id) : [];
+  const stepResults = run.scenario_id ? db.prepare('SELECT * FROM scenario_step_results WHERE run_id=? ORDER BY viewport, position, id').all(run.id) : [];
   res.render('run', { run, pages, issues, scenario, stepResults });
 });
 
@@ -406,8 +421,8 @@ app.get('/api/runs/:id', (req, res) => {
            baseline_path, diff_path, visual_change_pct, accessibility_count
     FROM test_pages WHERE run_id=? ORDER BY id DESC LIMIT 10
   `).all(run.id);
-  const latestIssues = db.prepare(`SELECT id, severity, category, message, details, page_id FROM test_issues WHERE run_id=? ORDER BY id DESC LIMIT 20`).all(run.id);
-  const latestSteps = db.prepare(`SELECT id, position, action, status, message, screenshot_path FROM scenario_step_results WHERE run_id=? ORDER BY position DESC LIMIT 20`).all(run.id);
+  const latestIssues = db.prepare('SELECT id, severity, category, message, details, page_id FROM test_issues WHERE run_id=? ORDER BY id DESC LIMIT 20').all(run.id);
+  const latestSteps = db.prepare('SELECT id, position, action, status, message, screenshot_path, viewport FROM scenario_step_results WHERE run_id=? ORDER BY id DESC LIMIT 20').all(run.id);
   res.json({ ...run, latest_pages: latestPages, latest_issues: latestIssues, latest_steps: latestSteps });
 });
 
