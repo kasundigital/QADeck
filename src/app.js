@@ -11,426 +11,98 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'));
 const artifactRoot = path.join(dataDir, 'artifacts');
-const VIEWPORT_OPTIONS = ['desktop', 'laptop', 'tablet', 'mobile', 'small-mobile'];
-const SCENARIO_ACTIONS = ['visit', 'click', 'fill', 'select', 'check', 'uncheck', 'expect_text', 'expect_url', 'wait', 'screenshot'];
-const SCHEDULE_INTERVALS = [15, 30, 60, 360, 720, 1440, 10080];
+const VIEWPORT_OPTIONS = ['desktop','laptop','tablet','mobile','small-mobile'];
+const SCENARIO_ACTIONS = ['visit','click','fill','select','check','uncheck','expect_text','expect_url','wait','screenshot','api_get','api_post','expect_status','expect_json'];
+const SCHEDULE_INTERVALS = [15,30,60,360,720,1440,10080];
 
-app.set('view engine', 'ejs');
-app.set('views', path.join(process.cwd(), 'views'));
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
-app.use('/static', express.static(path.join(process.cwd(), 'public')));
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'qadeck-dev-session-secret-change-me',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production' && process.env.FORCE_HTTPS === 'true',
-    maxAge: 12 * 60 * 60 * 1000
-  }
-}));
+app.set('view engine','ejs');
+app.set('views',path.join(process.cwd(),'views'));
+app.use(helmet({contentSecurityPolicy:false}));
+app.use(express.urlencoded({extended:false,limit:'1mb'}));
+app.use(express.json({limit:'1mb'}));
+app.use('/static',express.static(path.join(process.cwd(),'public')));
+app.use(session({secret:process.env.SESSION_SECRET||'qadeck-dev-session-secret-change-me',resave:false,saveUninitialized:false,cookie:{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production'&&process.env.FORCE_HTTPS==='true',maxAge:12*60*60*1000}}));
+app.locals.formatDate=(value)=>value?new Date(`${value.replace(' ','T')}Z`).toLocaleString():'—';
+app.locals.issueClass=(severity)=>({critical:'danger',high:'danger',medium:'warning',low:'info'}[severity]||'muted');
 
-app.locals.formatDate = (value) => value ? new Date(`${value.replace(' ', 'T')}Z`).toLocaleString() : '—';
-app.locals.issueClass = (severity) => ({ critical: 'danger', high: 'danger', medium: 'warning', low: 'info' }[severity] || 'muted');
+function safeEqual(a,b){const aa=Buffer.from(String(a||'')),bb=Buffer.from(String(b||''));return aa.length===bb.length&&crypto.timingSafeEqual(aa,bb);}
+function requireAuth(req,res,next){if(req.session?.authenticated)return next();return res.redirect('/login');}
+function asArray(value){return Array.isArray(value)?value:value===undefined||value===null?[]:[value];}
+function featureValue(body,name){return body[name]==='1'?1:0;}
+function parseScheduleInterval(body){const v=Number(body.schedule_interval_minutes||1440);return SCHEDULE_INTERVALS.includes(v)?v:1440;}
+function newTriggerToken(){return crypto.randomBytes(24).toString('base64url');}
+function validEmail(value){return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);}
 
-function safeEqual(a, b) {
-  const aa = Buffer.from(String(a || ''));
-  const bb = Buffer.from(String(b || ''));
-  return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
+function parseExtraLoginFields(body,prefix='extra_'){
+  const names=asArray(body[`${prefix}field_name`]),values=asArray(body[`${prefix}field_value`]),selectors=asArray(body[`${prefix}field_selector`]),types=asArray(body[`${prefix}field_type`]);
+  const count=Math.max(names.length,values.length,selectors.length,types.length),fields=[];
+  for(let i=0;i<count;i++){const name=String(names[i]||'').trim(),value=String(values[i]||''),selector=String(selectors[i]||'').trim(),requested=String(types[i]||'auto').toLowerCase(),type=['auto','text','password','select'].includes(requested)?requested:'auto';if(!name&&!selector)continue;fields.push({name,value,selector,type});}
+  return fields.slice(0,20);
 }
+function encryptFields(fields){return fields.length?encrypt(JSON.stringify(fields)):null;}
+function decryptFields(enc){if(!enc)return[];try{const p=JSON.parse(decrypt(enc));return Array.isArray(p)?p.slice(0,20):[];}catch{return[];}}
+function parseViewportProfiles(body){const values=asArray(body.viewport_profiles).map(String),valid=[...new Set(values.filter((v)=>VIEWPORT_OPTIONS.includes(v)))];return valid.length?valid:['desktop'];}
+function getViewportProfiles(project){try{const p=JSON.parse(project?.viewport_profiles||'[]');const v=Array.isArray(p)?p.filter((x)=>VIEWPORT_OPTIONS.includes(x)):[];return v.length?v:['desktop'];}catch{return['desktop'];}}
+function parseScenarioSteps(body){const actions=asArray(body.step_action),targets=asArray(body.step_target),values=asArray(body.step_value),count=Math.max(actions.length,targets.length,values.length),steps=[];for(let i=0;i<count;i++){const action=String(actions[i]||'').trim().toLowerCase();if(!SCENARIO_ACTIONS.includes(action))continue;steps.push({action,target:String(targets[i]||'').trim(),value:String(values[i]||'')});}return steps.slice(0,100);}
+function saveScenarioSteps(scenarioId,steps){db.transaction(()=>{db.prepare('DELETE FROM scenario_steps WHERE scenario_id=?').run(scenarioId);const insert=db.prepare('INSERT INTO scenario_steps (scenario_id,position,action,target,value) VALUES (?,?,?,?,?)');steps.forEach((s,i)=>insert.run(scenarioId,i+1,s.action,s.target||null,s.value||null));})();}
+function artifactAbsolute(webPath){if(!webPath||!String(webPath).startsWith('/artifacts/'))return null;const relative=String(webPath).slice('/artifacts/'.length),resolved=path.resolve(artifactRoot,relative);if(resolved!==artifactRoot&&!resolved.startsWith(`${artifactRoot}${path.sep}`))return null;return resolved;}
+function queueRun(projectId,runType='crawl',scenarioId=null){const active=db.prepare("SELECT id FROM test_runs WHERE project_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(projectId);if(active)return {id:active.id,existing:true};const result=db.prepare('INSERT INTO test_runs (project_id,status,queued_at,run_type,scenario_id) VALUES (?,\'queued\',CURRENT_TIMESTAMP,?,?)').run(projectId,runType,scenarioId);return{id:Number(result.lastInsertRowid),existing:false};}
 
-function requireAuth(req, res, next) {
-  if (req.session?.authenticated) return next();
-  return res.redirect('/login');
-}
-
-function asArray(value) {
-  if (Array.isArray(value)) return value;
-  if (value === undefined || value === null) return [];
-  return [value];
-}
-
-function parseExtraLoginFields(body) {
-  const names = asArray(body.extra_field_name);
-  const values = asArray(body.extra_field_value);
-  const selectors = asArray(body.extra_field_selector);
-  const types = asArray(body.extra_field_type);
-  const count = Math.max(names.length, values.length, selectors.length, types.length);
-  const fields = [];
-
-  for (let i = 0; i < count; i += 1) {
-    const name = String(names[i] || '').trim();
-    const value = String(values[i] || '');
-    const selector = String(selectors[i] || '').trim();
-    const requestedType = String(types[i] || 'auto').toLowerCase();
-    const type = ['auto', 'text', 'password', 'select'].includes(requestedType) ? requestedType : 'auto';
-    if (!name && !selector) continue;
-    fields.push({ name, value, selector, type });
-  }
-
-  return fields.slice(0, 20);
-}
-
-function encryptExtraLoginFields(fields) {
-  if (!fields.length) return null;
-  return encrypt(JSON.stringify(fields));
-}
-
-function decryptExtraLoginFields(project) {
-  if (!project?.extra_login_fields_enc) return [];
-  try {
-    const parsed = JSON.parse(decrypt(project.extra_login_fields_enc));
-    return Array.isArray(parsed) ? parsed.slice(0, 20) : [];
-  } catch {
-    return [];
-  }
-}
-
-function parseViewportProfiles(body) {
-  const values = asArray(body.viewport_profiles).map((value) => String(value));
-  const valid = [...new Set(values.filter((value) => VIEWPORT_OPTIONS.includes(value)))];
-  return valid.length ? valid : ['desktop'];
-}
-
-function getViewportProfiles(project) {
-  try {
-    const parsed = JSON.parse(project?.viewport_profiles || '[]');
-    if (Array.isArray(parsed)) {
-      const valid = parsed.filter((value) => VIEWPORT_OPTIONS.includes(value));
-      if (valid.length) return valid;
-    }
-  } catch {}
-  return ['desktop'];
-}
-
-function featureValue(body, name) {
-  return body[name] === '1' ? 1 : 0;
-}
-
-function parseScheduleInterval(body) {
-  const value = Number(body.schedule_interval_minutes || 1440);
-  return SCHEDULE_INTERVALS.includes(value) ? value : 1440;
-}
-
-function parseScenarioSteps(body) {
-  const actions = asArray(body.step_action);
-  const targets = asArray(body.step_target);
-  const values = asArray(body.step_value);
-  const count = Math.max(actions.length, targets.length, values.length);
-  const steps = [];
-  for (let i = 0; i < count; i += 1) {
-    const action = String(actions[i] || '').trim().toLowerCase();
-    if (!SCENARIO_ACTIONS.includes(action)) continue;
-    steps.push({ action, target: String(targets[i] || '').trim(), value: String(values[i] || '') });
-  }
-  return steps.slice(0, 100);
-}
-
-function saveScenarioSteps(scenarioId, steps) {
-  const replace = db.transaction(() => {
-    db.prepare('DELETE FROM scenario_steps WHERE scenario_id=?').run(scenarioId);
-    const insert = db.prepare('INSERT INTO scenario_steps (scenario_id, position, action, target, value) VALUES (?, ?, ?, ?, ?)');
-    steps.forEach((step, index) => insert.run(scenarioId, index + 1, step.action, step.target || null, step.value || null));
-  });
-  replace();
-}
-
-function artifactAbsolute(webPath) {
-  if (!webPath || !String(webPath).startsWith('/artifacts/')) return null;
-  const relative = String(webPath).slice('/artifacts/'.length);
-  const resolved = path.resolve(artifactRoot, relative);
-  if (resolved !== artifactRoot && !resolved.startsWith(`${artifactRoot}${path.sep}`)) return null;
-  return resolved;
-}
-
-app.get('/health', (req, res) => res.json({ status: 'ok', app: 'QADeck', version: '0.4.0', mode: 'web' }));
-
-app.get('/login', (req, res) => {
-  if (req.session?.authenticated) return res.redirect('/');
-  res.render('login', { error: null });
+app.get('/health',(req,res)=>res.json({status:'ok',app:'QADeck',version:'0.5.0',mode:'web'}));
+app.post('/hooks/projects/:id/run/:token',(req,res)=>{
+  const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project||!project.trigger_token||!safeEqual(req.params.token,project.trigger_token))return res.status(404).json({error:'Not found'});
+  let scenarioId=null,runType='crawl';if(req.body?.scenario_id){const s=db.prepare('SELECT id FROM test_scenarios WHERE id=? AND project_id=?').get(req.body.scenario_id,project.id);if(!s)return res.status(400).json({error:'Invalid scenario_id'});scenarioId=s.id;runType='scenario';}
+  const run=queueRun(project.id,runType,scenarioId);return res.status(run.existing?200:202).json({run_id:run.id,status:run.existing?'already_active':'queued',run_type:runType});
 });
 
-app.post('/login', (req, res) => {
-  const configuredEmail = process.env.QADECK_ADMIN_EMAIL || 'admin@example.com';
-  const configuredPassword = process.env.QADECK_ADMIN_PASSWORD || 'change-this-password';
-  if (safeEqual(req.body.email, configuredEmail) && safeEqual(req.body.password, configuredPassword)) {
-    req.session.authenticated = true;
-    req.session.email = configuredEmail;
-    return res.redirect('/');
-  }
-  return res.status(401).render('login', { error: 'Invalid email or password.' });
-});
-
-app.post('/logout', requireAuth, (req, res) => req.session.destroy(() => res.redirect('/login')));
-
+app.get('/login',(req,res)=>req.session?.authenticated?res.redirect('/'):res.render('login',{error:null}));
+app.post('/login',(req,res)=>{const email=process.env.QADECK_ADMIN_EMAIL||'admin@example.com',password=process.env.QADECK_ADMIN_PASSWORD||'change-this-password';if(safeEqual(req.body.email,email)&&safeEqual(req.body.password,password)){req.session.authenticated=true;req.session.email=email;return res.redirect('/');}return res.status(401).render('login',{error:'Invalid email or password.'});});
+app.post('/logout',requireAuth,(req,res)=>req.session.destroy(()=>res.redirect('/login')));
 app.use(requireAuth);
-app.use('/artifacts', express.static(artifactRoot));
+app.use('/artifacts',express.static(artifactRoot));
 
-app.get('/', (req, res) => {
-  const projects = db.prepare(`
-    SELECT p.*,
-      (SELECT id FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) AS last_run_id,
-      (SELECT status FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) AS last_status,
-      (SELECT pages_scanned FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) AS last_pages,
-      (SELECT issues_count FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) AS last_issues,
-      (SELECT completed_at FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) AS last_completed
-    FROM projects p ORDER BY p.id DESC
-  `).all();
-
-  const totals = {
-    projects: db.prepare('SELECT COUNT(*) AS c FROM projects').get().c,
-    runs: db.prepare('SELECT COUNT(*) AS c FROM test_runs').get().c,
-    issues: db.prepare('SELECT COUNT(*) AS c FROM test_issues').get().c,
-    running: db.prepare("SELECT COUNT(*) AS c FROM test_runs WHERE status IN ('queued','running')").get().c
-  };
-
-  res.render('dashboard', { projects, totals, email: req.session.email });
+app.get('/',(req,res)=>{
+  const projects=db.prepare(`SELECT p.*,(SELECT id FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_run_id,(SELECT status FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_status,(SELECT pages_scanned FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_pages,(SELECT issues_count FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_issues,(SELECT completed_at FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_completed FROM projects p ORDER BY p.id DESC`).all();
+  const totals={projects:db.prepare('SELECT COUNT(*) c FROM projects').get().c,runs:db.prepare('SELECT COUNT(*) c FROM test_runs').get().c,issues:db.prepare('SELECT COUNT(*) c FROM test_issues').get().c,running:db.prepare("SELECT COUNT(*) c FROM test_runs WHERE status IN ('queued','running')").get().c};
+  res.render('dashboard',{projects,totals,email:req.session.email});
 });
 
-app.get('/projects/new', (req, res) => res.render('project-form', {
-  project: null,
-  extraLoginFields: [],
-  viewportProfiles: ['desktop', 'tablet', 'mobile'],
-  error: null
-}));
-
-app.post('/projects', (req, res) => {
-  const name = String(req.body.name || '').trim();
-  const baseUrl = String(req.body.base_url || '').trim();
-  const extraLoginFields = parseExtraLoginFields(req.body);
-  const viewportProfiles = parseViewportProfiles(req.body);
-  const scheduleEnabled = featureValue(req.body, 'schedule_enabled');
-  const scheduleInterval = parseScheduleInterval(req.body);
-  if (!name || !baseUrl) return res.status(400).render('project-form', { project: req.body, extraLoginFields, viewportProfiles, error: 'Project name and Base URL are required.' });
-  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: req.body, extraLoginFields, viewportProfiles, error: 'Please enter a valid Base URL.' }); }
-
-  const result = db.prepare(`
-    INSERT INTO projects (
-      name, base_url, login_url, username, password_enc, extra_login_fields_enc,
-      viewport_profiles, enable_visual, enable_accessibility, enable_trace, enable_video,
-      schedule_enabled, schedule_interval_minutes, schedule_last_queued_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END)
-  `).run(
-    name,
-    baseUrl,
-    String(req.body.login_url || '').trim() || null,
-    String(req.body.username || '').trim() || null,
-    encrypt(req.body.password || ''),
-    encryptExtraLoginFields(extraLoginFields),
-    JSON.stringify(viewportProfiles),
-    featureValue(req.body, 'enable_visual'),
-    featureValue(req.body, 'enable_accessibility'),
-    featureValue(req.body, 'enable_trace'),
-    featureValue(req.body, 'enable_video'),
-    scheduleEnabled,
-    scheduleInterval,
-    scheduleEnabled
-  );
-
+function projectFormData(project,body=null){const p=body?{...project,...body}:project;return{project:p,extraLoginFields:body?parseExtraLoginFields(body):decryptFields(project?.extra_login_fields_enc),viewportProfiles:body?parseViewportProfiles(body):getViewportProfiles(project),error:null};}
+app.get('/projects/new',(req,res)=>res.render('project-form',{project:null,extraLoginFields:[],viewportProfiles:['desktop','tablet','mobile'],error:null}));
+app.post('/projects',(req,res)=>{
+  const name=String(req.body.name||'').trim(),baseUrl=String(req.body.base_url||'').trim(),extra=parseExtraLoginFields(req.body),viewports=parseViewportProfiles(req.body),scheduleEnabled=featureValue(req.body,'schedule_enabled'),scheduleInterval=parseScheduleInterval(req.body),notifyEmail=String(req.body.notify_email||'').trim();
+  if(!name||!baseUrl)return res.status(400).render('project-form',{project:req.body,extraLoginFields:extra,viewportProfiles:viewports,error:'Project name and Base URL are required.'});try{new URL(baseUrl);}catch{return res.status(400).render('project-form',{project:req.body,extraLoginFields:extra,viewportProfiles:viewports,error:'Please enter a valid Base URL.'});}if(!validEmail(notifyEmail))return res.status(400).render('project-form',{project:req.body,extraLoginFields:extra,viewportProfiles:viewports,error:'Notification email is invalid.'});
+  const result=db.prepare(`INSERT INTO projects (name,base_url,login_url,username,password_enc,extra_login_fields_enc,viewport_profiles,enable_visual,enable_accessibility,enable_trace,enable_video,enable_performance,performance_budget_ms,schedule_enabled,schedule_interval_minutes,schedule_last_queued_at,webhook_url_enc,telegram_chat_id,notify_email,notify_on_success,notify_on_failure,trigger_token) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END,?,?,?,?,?,?)`).run(name,baseUrl,String(req.body.login_url||'').trim()||null,String(req.body.username||'').trim()||null,encrypt(req.body.password||''),encryptFields(extra),JSON.stringify(viewports),featureValue(req.body,'enable_visual'),featureValue(req.body,'enable_accessibility'),featureValue(req.body,'enable_trace'),featureValue(req.body,'enable_video'),featureValue(req.body,'enable_performance'),Math.max(500,Number(req.body.performance_budget_ms||3000)),scheduleEnabled,scheduleInterval,scheduleEnabled,req.body.webhook_url?encrypt(String(req.body.webhook_url).trim()):null,String(req.body.telegram_chat_id||'').trim()||null,notifyEmail||null,featureValue(req.body,'notify_on_success'),featureValue(req.body,'notify_on_failure'),newTriggerToken());
   res.redirect(`/projects/${result.lastInsertRowid}`);
 });
-
-app.get('/projects/:id', (req, res) => {
-  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
-  if (!project) return res.status(404).send('Project not found');
-  const runs = db.prepare('SELECT * FROM test_runs WHERE project_id=? ORDER BY id DESC LIMIT 30').all(project.id);
-  const scenarios = db.prepare(`
-    SELECT s.*, (SELECT COUNT(*) FROM scenario_steps st WHERE st.scenario_id=s.id) AS step_count
-    FROM test_scenarios s WHERE s.project_id=? ORDER BY s.id DESC
-  `).all(project.id);
-  res.render('project', { project, runs, scenarios, viewportProfiles: getViewportProfiles(project) });
+app.get('/projects/:id',(req,res)=>{const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project)return res.status(404).send('Project not found');if(!project.trigger_token){project.trigger_token=newTriggerToken();db.prepare('UPDATE projects SET trigger_token=? WHERE id=?').run(project.trigger_token,project.id);}const runs=db.prepare('SELECT * FROM test_runs WHERE project_id=? ORDER BY id DESC LIMIT 30').all(project.id),scenarios=db.prepare(`SELECT s.*,(SELECT COUNT(*) FROM scenario_steps st WHERE st.scenario_id=s.id) step_count,r.name role_name FROM test_scenarios s LEFT JOIN project_roles r ON r.id=s.role_id WHERE s.project_id=? ORDER BY s.id DESC`).all(project.id),roles=db.prepare('SELECT * FROM project_roles WHERE project_id=? ORDER BY id DESC').all(project.id);res.render('project',{project,runs,scenarios,roles,viewportProfiles:getViewportProfiles(project)});});
+app.get('/projects/:id/edit',(req,res)=>{const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project)return res.status(404).send('Project not found');res.render('project-form',projectFormData(project));});
+app.post('/projects/:id',(req,res)=>{
+  const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project)return res.status(404).send('Project not found');const name=String(req.body.name||'').trim(),baseUrl=String(req.body.base_url||'').trim(),extra=parseExtraLoginFields(req.body),viewports=parseViewportProfiles(req.body),scheduleEnabled=featureValue(req.body,'schedule_enabled'),scheduleInterval=parseScheduleInterval(req.body),notifyEmail=String(req.body.notify_email||'').trim();if(!name||!baseUrl)return res.status(400).render('project-form',{project:{...project,...req.body},extraLoginFields:extra,viewportProfiles:viewports,error:'Project name and Base URL are required.'});try{new URL(baseUrl);}catch{return res.status(400).render('project-form',{project:{...project,...req.body},extraLoginFields:extra,viewportProfiles:viewports,error:'Please enter a valid Base URL.'});}if(!validEmail(notifyEmail))return res.status(400).render('project-form',{project:{...project,...req.body},extraLoginFields:extra,viewportProfiles:viewports,error:'Notification email is invalid.'});
+  const passwordSql=req.body.password?', password_enc=?':'',webhookSql=req.body.webhook_url?', webhook_url_enc=?':req.body.clear_webhook==='1'?', webhook_url_enc=NULL':'';const params=[name,baseUrl,String(req.body.login_url||'').trim()||null,String(req.body.username||'').trim()||null,encryptFields(extra),JSON.stringify(viewports),featureValue(req.body,'enable_visual'),featureValue(req.body,'enable_accessibility'),featureValue(req.body,'enable_trace'),featureValue(req.body,'enable_video'),featureValue(req.body,'enable_performance'),Math.max(500,Number(req.body.performance_budget_ms||3000)),scheduleEnabled,scheduleInterval,scheduleEnabled,String(req.body.telegram_chat_id||'').trim()||null,notifyEmail||null,featureValue(req.body,'notify_on_success'),featureValue(req.body,'notify_on_failure')];if(req.body.password)params.push(encrypt(req.body.password));if(req.body.webhook_url)params.push(encrypt(String(req.body.webhook_url).trim()));params.push(project.id);
+  db.prepare(`UPDATE projects SET name=?,base_url=?,login_url=?,username=?,extra_login_fields_enc=?,viewport_profiles=?,enable_visual=?,enable_accessibility=?,enable_trace=?,enable_video=?,enable_performance=?,performance_budget_ms=?,schedule_enabled=?,schedule_interval_minutes=?,schedule_last_queued_at=CASE WHEN ?=1 THEN COALESCE(schedule_last_queued_at,CURRENT_TIMESTAMP) ELSE NULL END,telegram_chat_id=?,notify_email=?,notify_on_success=?,notify_on_failure=?${passwordSql}${webhookSql},updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(...params);res.redirect(`/projects/${project.id}`);
 });
+app.post('/projects/:id/regenerate-token',(req,res)=>{const token=newTriggerToken();db.prepare('UPDATE projects SET trigger_token=? WHERE id=?').run(token,req.params.id);res.redirect(`/projects/${req.params.id}`);});
+app.post('/projects/:id/delete',(req,res)=>{db.prepare('DELETE FROM projects WHERE id=?').run(req.params.id);res.redirect('/');});
+app.post('/projects/:id/run',(req,res)=>{const p=db.prepare('SELECT id FROM projects WHERE id=?').get(req.params.id);if(!p)return res.status(404).send('Project not found');const run=queueRun(p.id);res.redirect(`/runs/${run.id}`);});
 
-app.get('/projects/:id/edit', (req, res) => {
-  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
-  if (!project) return res.status(404).send('Project not found');
-  res.render('project-form', {
-    project,
-    extraLoginFields: decryptExtraLoginFields(project),
-    viewportProfiles: getViewportProfiles(project),
-    error: null
-  });
-});
+app.get('/projects/:id/roles/new',(req,res)=>{const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project)return res.status(404).send('Project not found');res.render('role-form',{project,role:null,fields:[],error:null});});
+app.post('/projects/:id/roles',(req,res)=>{const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project)return res.status(404).send('Project not found');const name=String(req.body.name||'').trim(),fields=parseExtraLoginFields(req.body,'role_');if(!name)return res.status(400).render('role-form',{project,role:req.body,fields,error:'Role name is required.'});db.prepare('INSERT INTO project_roles (project_id,name,login_url,username,password_enc,extra_login_fields_enc) VALUES (?,?,?,?,?,?)').run(project.id,name,String(req.body.login_url||project.login_url||'').trim()||null,String(req.body.username||'').trim()||null,encrypt(req.body.password||''),encryptFields(fields));res.redirect(`/projects/${project.id}`);});
+app.get('/roles/:id/edit',(req,res)=>{const role=db.prepare('SELECT * FROM project_roles WHERE id=?').get(req.params.id);if(!role)return res.status(404).send('Role not found');const project=db.prepare('SELECT * FROM projects WHERE id=?').get(role.project_id);res.render('role-form',{project,role,fields:decryptFields(role.extra_login_fields_enc),error:null});});
+app.post('/roles/:id',(req,res)=>{const role=db.prepare('SELECT * FROM project_roles WHERE id=?').get(req.params.id);if(!role)return res.status(404).send('Role not found');const project=db.prepare('SELECT * FROM projects WHERE id=?').get(role.project_id),name=String(req.body.name||'').trim(),fields=parseExtraLoginFields(req.body,'role_');if(!name)return res.status(400).render('role-form',{project,role:{...role,...req.body},fields,error:'Role name is required.'});const pw=req.body.password?', password_enc=?':'';const params=[name,String(req.body.login_url||'').trim()||null,String(req.body.username||'').trim()||null,encryptFields(fields)];if(req.body.password)params.push(encrypt(req.body.password));params.push(role.id);db.prepare(`UPDATE project_roles SET name=?,login_url=?,username=?,extra_login_fields_enc=?${pw},updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(...params);res.redirect(`/projects/${role.project_id}`);});
+app.post('/roles/:id/delete',(req,res)=>{const role=db.prepare('SELECT * FROM project_roles WHERE id=?').get(req.params.id);if(!role)return res.status(404).send('Role not found');db.prepare('UPDATE test_scenarios SET role_id=NULL WHERE role_id=?').run(role.id);db.prepare('DELETE FROM project_roles WHERE id=?').run(role.id);res.redirect(`/projects/${role.project_id}`);});
 
-app.post('/projects/:id', (req, res) => {
-  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
-  if (!project) return res.status(404).send('Project not found');
-  const name = String(req.body.name || '').trim();
-  const baseUrl = String(req.body.base_url || '').trim();
-  const extraLoginFields = parseExtraLoginFields(req.body);
-  const viewportProfiles = parseViewportProfiles(req.body);
-  const scheduleEnabled = featureValue(req.body, 'schedule_enabled');
-  const scheduleInterval = parseScheduleInterval(req.body);
-  if (!name || !baseUrl) return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, viewportProfiles, error: 'Project name and Base URL are required.' });
-  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, viewportProfiles, error: 'Please enter a valid Base URL.' }); }
+function scenarioRender(res,project,scenario,steps,error=null){const roles=db.prepare('SELECT id,name FROM project_roles WHERE project_id=? ORDER BY name').all(project.id);return res.render('scenario-form',{project,scenario,steps,roles,error});}
+app.get('/projects/:id/scenarios/new',(req,res)=>{const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project)return res.status(404).send('Project not found');scenarioRender(res,project,null,[]);});
+app.post('/projects/:id/scenarios',(req,res)=>{const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project)return res.status(404).send('Project not found');const name=String(req.body.name||'').trim(),description=String(req.body.description||'').trim(),steps=parseScenarioSteps(req.body),roleId=req.body.role_id?Number(req.body.role_id):null,retries=Math.max(0,Math.min(3,Number(req.body.retry_count||1)));if(!name||!steps.length)return scenarioRender(res.status(400),project,req.body,steps,'Scenario name and at least one step are required.');const result=db.prepare('INSERT INTO test_scenarios (project_id,name,description,use_project_login,role_id,retry_count) VALUES (?,?,?,?,?,?)').run(project.id,name,description||null,featureValue(req.body,'use_project_login'),roleId,retries);saveScenarioSteps(Number(result.lastInsertRowid),steps);res.redirect(`/projects/${project.id}`);});
+app.get('/scenarios/:id/edit',(req,res)=>{const scenario=db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(req.params.id);if(!scenario)return res.status(404).send('Scenario not found');const project=db.prepare('SELECT * FROM projects WHERE id=?').get(scenario.project_id),steps=db.prepare('SELECT * FROM scenario_steps WHERE scenario_id=? ORDER BY position').all(scenario.id);scenarioRender(res,project,scenario,steps);});
+app.post('/scenarios/:id',(req,res)=>{const scenario=db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(req.params.id);if(!scenario)return res.status(404).send('Scenario not found');const project=db.prepare('SELECT * FROM projects WHERE id=?').get(scenario.project_id),name=String(req.body.name||'').trim(),description=String(req.body.description||'').trim(),steps=parseScenarioSteps(req.body),roleId=req.body.role_id?Number(req.body.role_id):null,retries=Math.max(0,Math.min(3,Number(req.body.retry_count||1)));if(!name||!steps.length)return scenarioRender(res.status(400),project,{...scenario,...req.body},steps,'Scenario name and at least one step are required.');db.prepare('UPDATE test_scenarios SET name=?,description=?,use_project_login=?,role_id=?,retry_count=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(name,description||null,featureValue(req.body,'use_project_login'),roleId,retries,scenario.id);saveScenarioSteps(scenario.id,steps);res.redirect(`/projects/${scenario.project_id}`);});
+app.post('/scenarios/:id/delete',(req,res)=>{const s=db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(req.params.id);if(!s)return res.status(404).send('Scenario not found');db.prepare('DELETE FROM test_scenarios WHERE id=?').run(s.id);res.redirect(`/projects/${s.project_id}`);});
+app.post('/scenarios/:id/run',(req,res)=>{const s=db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(req.params.id);if(!s)return res.status(404).send('Scenario not found');const run=queueRun(s.project_id,'scenario',s.id);res.redirect(`/runs/${run.id}`);});
 
-  const passwordSql = req.body.password ? ', password_enc=?' : '';
-  const params = [
-    name,
-    baseUrl,
-    String(req.body.login_url || '').trim() || null,
-    String(req.body.username || '').trim() || null,
-    encryptExtraLoginFields(extraLoginFields),
-    JSON.stringify(viewportProfiles),
-    featureValue(req.body, 'enable_visual'),
-    featureValue(req.body, 'enable_accessibility'),
-    featureValue(req.body, 'enable_trace'),
-    featureValue(req.body, 'enable_video'),
-    scheduleEnabled,
-    scheduleInterval,
-    scheduleEnabled
-  ];
-  if (req.body.password) params.push(encrypt(req.body.password));
-  params.push(project.id);
+app.get('/runs/:id',(req,res)=>{const run=db.prepare('SELECT r.*,p.name project_name,p.base_url FROM test_runs r JOIN projects p ON p.id=r.project_id WHERE r.id=?').get(req.params.id);if(!run)return res.status(404).send('Run not found');const pages=db.prepare('SELECT * FROM test_pages WHERE run_id=? ORDER BY id').all(run.id),issues=db.prepare(`SELECT i.*,p.url page_url,p.screenshot_path,p.viewport FROM test_issues i LEFT JOIN test_pages p ON p.id=i.page_id WHERE i.run_id=? ORDER BY CASE i.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,i.id`).all(run.id),scenario=run.scenario_id?db.prepare('SELECT s.*,r.name role_name FROM test_scenarios s LEFT JOIN project_roles r ON r.id=s.role_id WHERE s.id=?').get(run.scenario_id):null,stepResults=run.scenario_id?db.prepare('SELECT * FROM scenario_step_results WHERE run_id=? ORDER BY viewport,position,id').all(run.id):[],notifications=db.prepare('SELECT * FROM notification_logs WHERE run_id=? ORDER BY id DESC').all(run.id);res.render('run',{run,pages,issues,scenario,stepResults,notifications});});
+app.post('/pages/:id/approve-baseline',(req,res)=>{const page=db.prepare('SELECT tp.*,tr.project_id,tr.id run_id FROM test_pages tp JOIN test_runs tr ON tr.id=tp.run_id WHERE tp.id=?').get(req.params.id);if(!page)return res.status(404).send('Page result not found');const source=artifactAbsolute(page.screenshot_path);if(!source||!fs.existsSync(source))return res.status(400).send('Current screenshot unavailable');let baselinePath=page.baseline_path;if(!baselinePath){const hash=crypto.createHash('sha1').update(page.url).digest('hex').slice(0,20);baselinePath=`/artifacts/baselines/${page.project_id}/${page.viewport||'desktop'}/${hash}.png`;}const destination=artifactAbsolute(baselinePath);if(!destination)return res.status(400).send('Invalid baseline');fs.mkdirSync(path.dirname(destination),{recursive:true});fs.copyFileSync(source,destination);if(page.diff_path){const diff=artifactAbsolute(page.diff_path);if(diff&&fs.existsSync(diff))fs.rmSync(diff,{force:true});}db.prepare('UPDATE test_pages SET baseline_path=?,diff_path=NULL,visual_change_pct=0 WHERE id=?').run(baselinePath,page.id);res.redirect(`/runs/${page.run_id}`);});
+app.get('/api/runs/:id',(req,res)=>{const run=db.prepare('SELECT * FROM test_runs WHERE id=?').get(req.params.id);if(!run)return res.status(404).json({error:'Not found'});const latestPages=db.prepare('SELECT id,url,title,status_code,screenshot_path,duration_ms,viewport,baseline_path,diff_path,visual_change_pct,accessibility_count,performance_json,performance_score FROM test_pages WHERE run_id=? ORDER BY id DESC LIMIT 10').all(run.id),latestIssues=db.prepare('SELECT id,severity,category,message,details,page_id FROM test_issues WHERE run_id=? ORDER BY id DESC LIMIT 20').all(run.id),latestSteps=db.prepare('SELECT id,position,action,status,message,screenshot_path,viewport,attempts,flaky FROM scenario_step_results WHERE run_id=? ORDER BY id DESC LIMIT 20').all(run.id);res.json({...run,latest_pages:latestPages,latest_issues:latestIssues,latest_steps:latestSteps});});
 
-  db.prepare(`
-    UPDATE projects
-    SET name=?, base_url=?, login_url=?, username=?, extra_login_fields_enc=?,
-        viewport_profiles=?, enable_visual=?, enable_accessibility=?, enable_trace=?, enable_video=?,
-        schedule_enabled=?, schedule_interval_minutes=?,
-        schedule_last_queued_at=CASE WHEN ?=1 THEN COALESCE(schedule_last_queued_at,CURRENT_TIMESTAMP) ELSE NULL END
-        ${passwordSql}, updated_at=CURRENT_TIMESTAMP
-    WHERE id=?
-  `).run(...params);
-  res.redirect(`/projects/${project.id}`);
-});
-
-app.post('/projects/:id/delete', (req, res) => {
-  db.prepare('DELETE FROM projects WHERE id=?').run(req.params.id);
-  res.redirect('/');
-});
-
-app.post('/projects/:id/run', (req, res) => {
-  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
-  if (!project) return res.status(404).send('Project not found');
-  const active = db.prepare("SELECT id FROM test_runs WHERE project_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(project.id);
-  if (active) return res.redirect(`/runs/${active.id}`);
-  const result = db.prepare(`INSERT INTO test_runs (project_id, status, queued_at, run_type) VALUES (?, 'queued', CURRENT_TIMESTAMP, 'crawl')`).run(project.id);
-  res.redirect(`/runs/${Number(result.lastInsertRowid)}`);
-});
-
-app.get('/projects/:id/scenarios/new', (req, res) => {
-  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
-  if (!project) return res.status(404).send('Project not found');
-  res.render('scenario-form', { project, scenario: null, steps: [], error: null });
-});
-
-app.post('/projects/:id/scenarios', (req, res) => {
-  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
-  if (!project) return res.status(404).send('Project not found');
-  const name = String(req.body.name || '').trim();
-  const description = String(req.body.description || '').trim();
-  const steps = parseScenarioSteps(req.body);
-  if (!name || !steps.length) return res.status(400).render('scenario-form', { project, scenario: req.body, steps, error: 'Scenario name and at least one step are required.' });
-  const result = db.prepare('INSERT INTO test_scenarios (project_id, name, description) VALUES (?, ?, ?)').run(project.id, name, description || null);
-  saveScenarioSteps(Number(result.lastInsertRowid), steps);
-  res.redirect(`/projects/${project.id}`);
-});
-
-app.get('/scenarios/:id/edit', (req, res) => {
-  const scenario = db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(req.params.id);
-  if (!scenario) return res.status(404).send('Scenario not found');
-  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(scenario.project_id);
-  const steps = db.prepare('SELECT * FROM scenario_steps WHERE scenario_id=? ORDER BY position').all(scenario.id);
-  res.render('scenario-form', { project, scenario, steps, error: null });
-});
-
-app.post('/scenarios/:id', (req, res) => {
-  const scenario = db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(req.params.id);
-  if (!scenario) return res.status(404).send('Scenario not found');
-  const project = db.prepare('SELECT * FROM projects WHERE id=?').get(scenario.project_id);
-  const name = String(req.body.name || '').trim();
-  const description = String(req.body.description || '').trim();
-  const steps = parseScenarioSteps(req.body);
-  if (!name || !steps.length) return res.status(400).render('scenario-form', { project, scenario: { ...scenario, ...req.body }, steps, error: 'Scenario name and at least one step are required.' });
-  db.prepare('UPDATE test_scenarios SET name=?, description=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(name, description || null, scenario.id);
-  saveScenarioSteps(scenario.id, steps);
-  res.redirect(`/projects/${scenario.project_id}`);
-});
-
-app.post('/scenarios/:id/delete', (req, res) => {
-  const scenario = db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(req.params.id);
-  if (!scenario) return res.status(404).send('Scenario not found');
-  db.prepare('DELETE FROM test_scenarios WHERE id=?').run(scenario.id);
-  res.redirect(`/projects/${scenario.project_id}`);
-});
-
-app.post('/scenarios/:id/run', (req, res) => {
-  const scenario = db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(req.params.id);
-  if (!scenario) return res.status(404).send('Scenario not found');
-  const active = db.prepare("SELECT id FROM test_runs WHERE project_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(scenario.project_id);
-  if (active) return res.redirect(`/runs/${active.id}`);
-  const result = db.prepare(`
-    INSERT INTO test_runs (project_id, status, queued_at, run_type, scenario_id)
-    VALUES (?, 'queued', CURRENT_TIMESTAMP, 'scenario', ?)
-  `).run(scenario.project_id, scenario.id);
-  res.redirect(`/runs/${Number(result.lastInsertRowid)}`);
-});
-
-app.get('/runs/:id', (req, res) => {
-  const run = db.prepare(`SELECT r.*, p.name AS project_name, p.base_url FROM test_runs r JOIN projects p ON p.id=r.project_id WHERE r.id=?`).get(req.params.id);
-  if (!run) return res.status(404).send('Run not found');
-  const pages = db.prepare('SELECT * FROM test_pages WHERE run_id=? ORDER BY id').all(run.id);
-  const issues = db.prepare(`
-    SELECT i.*, p.url AS page_url, p.screenshot_path, p.viewport
-    FROM test_issues i LEFT JOIN test_pages p ON p.id=i.page_id
-    WHERE i.run_id=?
-    ORDER BY CASE i.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, i.id
-  `).all(run.id);
-  const scenario = run.scenario_id ? db.prepare('SELECT * FROM test_scenarios WHERE id=?').get(run.scenario_id) : null;
-  const stepResults = run.scenario_id ? db.prepare('SELECT * FROM scenario_step_results WHERE run_id=? ORDER BY viewport, position, id').all(run.id) : [];
-  res.render('run', { run, pages, issues, scenario, stepResults });
-});
-
-app.post('/pages/:id/approve-baseline', (req, res) => {
-  const page = db.prepare(`
-    SELECT tp.*, tr.project_id, tr.id AS run_id
-    FROM test_pages tp JOIN test_runs tr ON tr.id=tp.run_id
-    WHERE tp.id=?
-  `).get(req.params.id);
-  if (!page) return res.status(404).send('Page result not found');
-  const source = artifactAbsolute(page.screenshot_path);
-  if (!source || !fs.existsSync(source)) return res.status(400).send('Current screenshot is not available');
-
-  let baselinePath = page.baseline_path;
-  if (!baselinePath) {
-    const hash = crypto.createHash('sha1').update(page.url).digest('hex').slice(0, 20);
-    baselinePath = `/artifacts/baselines/${page.project_id}/${page.viewport || 'desktop'}/${hash}.png`;
-  }
-  const destination = artifactAbsolute(baselinePath);
-  if (!destination) return res.status(400).send('Invalid baseline path');
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  fs.copyFileSync(source, destination);
-
-  if (page.diff_path) {
-    const diff = artifactAbsolute(page.diff_path);
-    if (diff && fs.existsSync(diff)) fs.rmSync(diff, { force: true });
-  }
-  db.prepare('UPDATE test_pages SET baseline_path=?, diff_path=NULL, visual_change_pct=0 WHERE id=?').run(baselinePath, page.id);
-  res.redirect(`/runs/${page.run_id}`);
-});
-
-app.get('/api/runs/:id', (req, res) => {
-  const run = db.prepare('SELECT * FROM test_runs WHERE id=?').get(req.params.id);
-  if (!run) return res.status(404).json({ error: 'Not found' });
-  const latestPages = db.prepare(`
-    SELECT id, url, title, status_code, screenshot_path, duration_ms, viewport,
-           baseline_path, diff_path, visual_change_pct, accessibility_count
-    FROM test_pages WHERE run_id=? ORDER BY id DESC LIMIT 10
-  `).all(run.id);
-  const latestIssues = db.prepare('SELECT id, severity, category, message, details, page_id FROM test_issues WHERE run_id=? ORDER BY id DESC LIMIT 20').all(run.id);
-  const latestSteps = db.prepare('SELECT id, position, action, status, message, screenshot_path, viewport FROM scenario_step_results WHERE run_id=? ORDER BY id DESC LIMIT 20').all(run.id);
-  res.json({ ...run, latest_pages: latestPages, latest_issues: latestIssues, latest_steps: latestSteps });
-});
-
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).send('QADeck encountered an unexpected error.');
-});
-
-app.listen(port, '0.0.0.0', () => {
-  console.log(`QADeck web listening on http://0.0.0.0:${port}`);
-});
+app.use((err,req,res,next)=>{console.error(err);res.status(500).send('QADeck encountered an unexpected error.');});
+app.listen(port,'0.0.0.0',()=>console.log(`QADeck web listening on http://0.0.0.0:${port}`));
