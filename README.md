@@ -1,31 +1,92 @@
 # QADeck
 
-QADeck is a self-hosted, Docker-first web QA console. Add a web project, optionally provide a test login, start a QA run, and review detected issues with screenshots from one dashboard.
+QADeck is a self-hosted, Docker-first web QA platform. Add projects, configure test logins, run background crawls or no-code browser scenarios, and review functional, visual, responsive and accessibility issues with screenshots, video and Playwright traces.
 
-## Current MVP
+## QADeck v0.3
+
+### Projects and execution
 
 - Multi-project dashboard
 - Persistent background test queue
 - Dedicated Playwright worker container
 - Tests continue when the QADeck browser tab is closed
-- Live run progress while the report page is open
-- Optional encrypted per-project login credentials
-- Real Chromium testing with Playwright
+- Live progress while a report is open
+- Automatic recovery/re-queue of interrupted worker jobs
+- Persistent SQLite data and QA artifacts in a Docker volume
+
+### Login testing
+
+- Encrypted username/password storage
+- Unlimited additional login fields per project
+- Extra fields can represent company code, branch, tenant, domain, PIN, organization and similar inputs
+- Additional fields support text/password/dropdown mode
+- Optional CSS selector for unusual login forms
+- Automatic matching by label/name/placeholder when a selector is not supplied
+
+### Browser and functional QA
+
+- Real headless Chromium using Playwright
 - Same-origin safe crawler
-- Avoids links with destructive-looking paths (delete, remove, logout, destroy, etc.)
+- Read-only crawl mode avoids destructive-looking links
 - HTTP 4xx/5xx detection
 - Browser console error detection
 - Uncaught JavaScript error detection
 - Failed network request detection
 - Broken image detection
-- Horizontal overflow detection
-- Full-page screenshot for every visited page
-- Run history and issue reports
-- Protected QADeck admin login
-- Persistent SQLite database and screenshot storage in a Docker volume
-- Interrupted/stale worker jobs are automatically re-queued after recovery
+- Horizontal overflow/responsive issue detection
+- Full-page screenshots
 
-> **Safety:** The MVP is intentionally read-only after login. It follows normal GET links but does not submit discovered forms or click arbitrary buttons. Project-specific workflow/scenario testing will be added as a separate controlled feature.
+### Responsive QA
+
+Per project, select any combination of:
+
+- Desktop — 1440 × 900
+- Laptop — 1366 × 768
+- Tablet — 768 × 1024
+- Mobile — 390 × 844
+- Small mobile — 360 × 800
+
+QADeck repeats the configured crawl against each selected viewport.
+
+### Visual regression
+
+- First successful screenshot becomes the visual baseline
+- Future runs compare current screenshots against the baseline
+- Pixel-change percentage
+- Baseline / Current / Diff links
+- Visual-regression issues when the configured threshold is exceeded
+- Approve the current screenshot as the new baseline from the report
+
+### Accessibility
+
+QADeck uses Axe in the browser to detect accessibility violations and records them as QA issues with affected selectors and severity.
+
+### Debugging evidence
+
+- Browser video recording
+- Playwright trace recording
+- Screenshots on crawled pages
+- Screenshots on failed scenario steps
+- Persistent run history
+
+### No-code scenarios
+
+Each project can contain reusable functional workflows. Supported steps currently include:
+
+- Visit URL
+- Click
+- Fill field
+- Select option
+- Check checkbox
+- Uncheck checkbox
+- Expect text
+- Expect URL
+- Wait
+- Screenshot
+
+Scenario jobs run through the same background worker and report Pass / Fail / Skipped step results per configured viewport.
+
+> **Safety model:** automatic crawl jobs remain intentionally read-only. Scenario jobs may click buttons and submit forms because those actions are explicitly configured by the QADeck user. Use staging/test accounts for scenarios that create, edit or delete data.
 
 ## Architecture
 
@@ -35,13 +96,14 @@ Browser
    v
 QADeck Web  ----> SQLite queue/database <---- QADeck Worker
    |                                         |
-   |                                         v
-   |                                   Playwright Chromium
-   |                                         |
-   +---------- screenshots/results <---------+
+   |                                         +--> Safe crawler
+   |                                         +--> Scenario runner
+   |                                         +--> Visual regression
+   |                                         +--> Axe accessibility
+   |                                         +--> Trace / video
+   |
+   +------------ reports/artifacts <---------+
 ```
-
-Clicking **Run QA in background** only creates a queued database job. The `qadeck-worker` container picks it up and runs the browser test independently of the web interface. You can close QADeck and return later. While a run report is open it refreshes automatically to show new pages, issues and screenshots.
 
 ## Docker quick start
 
@@ -66,7 +128,7 @@ Start QADeck:
 docker compose up -d --build
 ```
 
-You should see two services:
+Check services:
 
 ```bash
 docker compose ps
@@ -81,13 +143,7 @@ Open:
 http://SERVER-IP:3000
 ```
 
-Health check:
-
-```text
-http://SERVER-IP:3000/health
-```
-
-Follow logs:
+Logs:
 
 ```bash
 docker compose logs -f qadeck
@@ -97,38 +153,39 @@ docker compose logs -f qadeck-worker
 ## Updating an existing installation
 
 ```bash
-cd QADeck
+cd /opt/QADeck
 git pull
 docker compose up -d --build
 ```
 
-The existing `qadeck_data` Docker volume is preserved. QADeck automatically adds the new queue/progress database fields when it starts.
+The existing `qadeck_data` volume is preserved. QADeck applies additive SQLite migrations on startup, so existing projects and run history are retained.
 
 ## Environment variables
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `PORT` | `3000` | QADeck HTTP port inside the web container |
+| `PORT` | `3000` | QADeck HTTP port |
 | `QADECK_ADMIN_EMAIL` | `admin@example.com` | Dashboard login email |
 | `QADECK_ADMIN_PASSWORD` | `change-this-password` | Dashboard login password |
 | `SESSION_SECRET` | development fallback | Session signing secret |
-| `CREDENTIALS_KEY` | development fallback | Encrypts stored target-site passwords |
-| `MAX_PAGES_PER_RUN` | `20` | Maximum pages crawled per QA run |
-| `PAGE_TIMEOUT_MS` | `20000` | Browser timeout per page |
-| `WORKER_POLL_MS` | `1500` | How often the background worker checks the queue |
-| `WORKER_STALE_MINUTES` | `2` | Age after which an interrupted running job can be recovered |
+| `CREDENTIALS_KEY` | development fallback | Encrypts target-site login data |
+| `MAX_PAGES_PER_RUN` | `20` | Maximum pages crawled per selected viewport |
+| `PAGE_TIMEOUT_MS` | `20000` | Browser/step timeout |
+| `WORKER_POLL_MS` | `1500` | Worker queue polling interval |
+| `WORKER_STALE_MINUTES` | `2` | Stale-run recovery threshold |
+| `VISUAL_DIFF_THRESHOLD_PCT` | `0.25` | Percentage of changed pixels before a visual issue is reported |
 
-## Planned next phases
+## Next useful expansions
 
-1. Visual scenario builder: navigate, click, fill, select, upload and assert.
-2. Recorder that converts a human browser session into a reusable scenario.
-3. Multiple test roles per project (admin/staff/customer).
-4. Mobile/tablet/desktop viewport profiles.
-5. Video and Playwright trace capture on failure.
-6. Scheduled runs and notifications.
-7. Multiple parallel workers and concurrency controls.
-8. GitHub/deployment-triggered regression runs.
-9. AI exploratory testing as an optional layer on top of deterministic tests.
+- Browser interaction recorder that converts manual actions into scenarios
+- Multiple named test roles per project (admin/staff/customer)
+- Scheduled/recurring runs and notification channels
+- API request/assertion steps
+- Performance and Web Vitals budgets
+- GitHub/deployment-triggered regression runs
+- Parallel worker concurrency controls
+- Flaky-test detection and retry policy
+- AI-assisted exploratory testing and issue summaries
 
 ## License
 
