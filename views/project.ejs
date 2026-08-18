@@ -1,4 +1,8 @@
 <%- include('partials/header', { title: project.name, email: '' }) %>
+<%
+  const scheduleLabels = {15:'15 min',30:'30 min',60:'1 hour',360:'6 hours',720:'12 hours',1440:'24 hours',10080:'7 days'};
+  const scheduleText = scheduleLabels[Number(project.schedule_interval_minutes || 1440)] || '24 hours';
+%>
 <div class="page-head">
   <div><span class="eyebrow">PROJECT</span><h1><%= project.name %></h1><p><a href="<%= project.base_url %>" target="_blank" rel="noreferrer"><%= project.base_url %></a></p></div>
   <div class="head-actions"><a class="btn secondary" href="/projects/<%= project.id %>/edit">Edit</a><a class="btn secondary" href="/projects/<%= project.id %>/scenarios/new">＋ Scenario</a><form method="post" action="/projects/<%= project.id %>/run"><button class="btn primary" type="submit">▶ Full QA crawl</button></form></div>
@@ -11,6 +15,7 @@
   <span class="feature-chip <%= project.enable_accessibility ? 'on' : '' %>">Accessibility</span>
   <span class="feature-chip <%= project.enable_trace ? 'on' : '' %>">Trace</span>
   <span class="feature-chip <%= project.enable_video ? 'on' : '' %>">Video</span>
+  <span class="feature-chip <%= project.schedule_enabled ? 'on' : '' %>"><%= project.schedule_enabled ? 'Scheduled every ' + scheduleText : 'Schedule off' %></span>
 </div>
 
 <div class="section-head"><div><h2>Scenarios</h2><p>Reusable no-code workflows that run through the same background QA worker.</p></div><a class="btn secondary" href="/projects/<%= project.id %>/scenarios/new">＋ Add scenario</a></div>
