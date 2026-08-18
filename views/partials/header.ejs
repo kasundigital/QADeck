@@ -6,21 +6,13 @@
   <title><%= title ? title + ' · QADeck' : 'QADeck' %></title>
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/qafeatures.css">
+  <link rel="stylesheet" href="/static/v05.css">
 </head>
 <body>
 <div class="app-shell">
   <aside class="sidebar">
-    <a class="brand" href="/">
-      <span class="brand-mark">Q</span>
-      <span><strong>QADeck</strong><small>Web QA Console</small></span>
-    </a>
-    <nav>
-      <a href="/" class="nav-item"><span>⌂</span> Projects</a>
-      <a href="/projects/new" class="nav-item"><span>＋</span> Add Project</a>
-    </nav>
-    <div class="sidebar-bottom">
-      <div class="signed-in"><small>Signed in</small><span><%= email || '' %></span></div>
-      <form method="post" action="/logout"><button class="btn ghost full" type="submit">Sign out</button></form>
-    </div>
+    <a class="brand" href="/"><span class="brand-mark">Q</span><span><strong>QADeck</strong><small>Web QA Console</small></span></a>
+    <nav><a href="/" class="nav-item"><span>⌂</span> Projects</a><a href="/projects/new" class="nav-item"><span>＋</span> Add Project</a></nav>
+    <div class="sidebar-bottom"><div class="signed-in"><small>Signed in</small><span><%= email || '' %></span></div><form method="post" action="/logout"><button class="btn ghost full" type="submit">Sign out</button></form></div>
   </aside>
   <main class="main">
