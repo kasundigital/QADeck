@@ -73,6 +73,7 @@ function ensureColumn(table, name, definition) {
   }
 }
 
+ensureColumn('projects', 'extra_login_fields_enc', 'TEXT');
 ensureColumn('test_runs', 'queued_at', 'TEXT');
 ensureColumn('test_runs', 'heartbeat_at', 'TEXT');
 ensureColumn('test_runs', 'current_url', 'TEXT');
