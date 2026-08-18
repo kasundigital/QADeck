@@ -1,14 +1,28 @@
 <%- include('partials/header', { title: role && role.id ? 'Edit Role' : 'Add Role', email: '' }) %>
+<link rel="stylesheet" href="/static/login-inspector.css">
 <% const editing=Boolean(role&&role.id); %>
 <div class="page-head compact"><div><span class="eyebrow">TEST ROLE</span><h1><%= editing?'Edit role':'Add role' %></h1><p><%= project.name %> · Add Admin, Staff, Customer or any named login account.</p></div></div>
 <div class="form-card wide-form"><% if(error){%><div class="alert danger"><%=error%></div><%}%><form method="post" action="<%=editing?'/roles/'+role.id:'/projects/'+project.id+'/roles'%>" class="stack-form">
 <label>Role name<input name="name" required value="<%=role?.name||''%>" placeholder="Admin"></label>
 <label>Login URL<input name="login_url" value="<%=role?.login_url||project.login_url||''%>"></label>
+<div class="login-inspector" data-login-inspector data-field-list="role-fields" data-field-template="role-field-template">
+  <div class="login-inspector-bar">
+    <div><strong>Inspect this role's login page</strong><p>Detect username, password, tenant/company fields, dropdowns and login controls before saving the role.</p></div>
+    <button class="btn secondary" type="button" data-inspect-login>⌕ Inspect page</button>
+  </div>
+  <div class="inspector-status" data-inspector-status>Enter or confirm the Login URL above, then inspect it.</div>
+  <div class="inspector-results" data-inspector-results hidden>
+    <div class="inspector-summary" data-inspector-summary></div>
+    <div class="inspector-actions"><button class="btn secondary small-btn" type="button" data-add-all-inspected hidden>＋ Add detected extra fields</button></div>
+    <div class="inspect-controls" data-inspector-controls></div>
+  </div>
+</div>
 <label>Username / email<input name="username" value="<%=role?.username||''%>"></label>
 <label>Password<input name="password" type="password" placeholder="<%=editing?'Leave blank to keep current password':''%>"></label>
-<div class="subsection-head"><div><h4>Additional login fields</h4><p>Optional company, branch, tenant, PIN and other fields.</p></div><button class="btn secondary" type="button" id="add-role-field">＋ Add field</button></div>
+<div class="subsection-head"><div><h4>Additional login fields</h4><p>Optional company, branch, tenant, PIN and other fields. The inspector can add these with selectors automatically.</p></div><button class="btn secondary" type="button" id="add-role-field">＋ Add field</button></div>
 <div id="role-fields" class="extra-fields"><% (fields||[]).forEach(field=>{ %><div class="extra-field-row"><label>Field name<input name="role_field_name" value="<%=field.name||''%>"></label><label>Value<input name="role_field_value" value="<%=field.value||''%>"></label><label>Type<select name="role_field_type"><%['auto','text','password','select'].forEach(t=>{ %><option value="<%=t%>" <%=field.type===t?'selected':''%>><%=t%></option><%})%></select></label><label>CSS selector<input name="role_field_selector" value="<%=field.selector||''%>"></label><button type="button" class="icon-remove">×</button></div><%})%></div>
 <div class="form-actions"><a class="btn secondary" href="/projects/<%=project.id%>">Cancel</a><button class="btn primary" type="submit"><%=editing?'Save role':'Add role'%></button></div></form></div>
 <template id="role-field-template"><div class="extra-field-row"><label>Field name<input name="role_field_name"></label><label>Value<input name="role_field_value"></label><label>Type<select name="role_field_type"><option value="auto">Auto</option><option value="text">Text</option><option value="password">Password</option><option value="select">Dropdown</option></select></label><label>CSS selector<input name="role_field_selector"></label><button type="button" class="icon-remove">×</button></div></template>
 <script>(()=>{const l=document.getElementById('role-fields'),t=document.getElementById('role-field-template');document.getElementById('add-role-field').onclick=()=>l.appendChild(t.content.cloneNode(true));l.onclick=e=>{const b=e.target.closest('.icon-remove');if(b)b.closest('.extra-field-row').remove();};})();</script>
+<script src="/static/login-inspector.js"></script>
 <%- include('partials/footer') %>
