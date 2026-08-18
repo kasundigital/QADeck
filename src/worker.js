@@ -6,8 +6,10 @@ const { runScenario } = require('./scenario-runner');
 
 const pollMs = Math.max(500, Number(process.env.WORKER_POLL_MS || 1500));
 const staleMinutes = Math.max(1, Number(process.env.WORKER_STALE_MINUTES || 2));
+const scheduleCheckMs = Math.max(10000, Number(process.env.SCHEDULE_CHECK_MS || 30000));
 const workerId = `${os.hostname()}-${process.pid}-${crypto.randomUUID().slice(0, 8)}`;
 let stopping = false;
+let lastScheduleCheck = 0;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,9 +30,38 @@ function recoverStaleRuns() {
   if (result.changes) console.log(`[QADeck worker] Re-queued ${result.changes} stale run(s).`);
 }
 
+const enqueueDueSchedules = db.transaction(() => {
+  const due = db.prepare(`
+    SELECT p.id, p.name
+    FROM projects p
+    WHERE p.schedule_enabled=1
+      AND p.schedule_interval_minutes >= 1
+      AND NOT EXISTS (
+        SELECT 1 FROM test_runs r
+        WHERE r.project_id=p.id AND r.status IN ('queued','running')
+      )
+      AND (
+        p.schedule_last_queued_at IS NULL
+        OR datetime(p.schedule_last_queued_at, '+' || p.schedule_interval_minutes || ' minutes') <= CURRENT_TIMESTAMP
+      )
+  `).all();
+
+  const insertRun = db.prepare(`
+    INSERT INTO test_runs (project_id, status, queued_at, run_type)
+    VALUES (?, 'queued', CURRENT_TIMESTAMP, 'crawl')
+  `);
+  const markProject = db.prepare('UPDATE projects SET schedule_last_queued_at=CURRENT_TIMESTAMP WHERE id=?');
+
+  for (const project of due) {
+    insertRun.run(project.id);
+    markProject.run(project.id);
+    console.log(`[QADeck scheduler] Queued scheduled crawl for ${project.name}.`);
+  }
+});
+
 const claimNextRun = db.transaction(() => {
   const run = db.prepare(`
-    SELECT id, project_id, run_type, scenario_id
+    SELECT id, project_id, run_type, scenario_id, started_at
     FROM test_runs
     WHERE status='queued'
     ORDER BY id ASC
@@ -38,6 +69,13 @@ const claimNextRun = db.transaction(() => {
   `).get();
 
   if (!run) return null;
+
+  if (run.started_at) {
+    db.prepare('DELETE FROM scenario_step_results WHERE run_id=?').run(run.id);
+    db.prepare('DELETE FROM test_issues WHERE run_id=?').run(run.id);
+    db.prepare('DELETE FROM test_pages WHERE run_id=?').run(run.id);
+    db.prepare(`UPDATE test_runs SET pages_scanned=0, issues_count=0, clean_pages=0, trace_path=NULL, video_path=NULL WHERE id=?`).run(run.id);
+  }
 
   const claimed = db.prepare(`
     UPDATE test_runs
@@ -71,6 +109,15 @@ async function loop() {
   console.log(`[QADeck worker] Started as ${workerId}. Polling every ${pollMs} ms.`);
 
   while (!stopping) {
+    try {
+      if (Date.now() - lastScheduleCheck >= scheduleCheckMs) {
+        enqueueDueSchedules();
+        lastScheduleCheck = Date.now();
+      }
+    } catch (error) {
+      console.error('[QADeck scheduler] Schedule check failed:', error);
+    }
+
     let job = null;
     try {
       job = claimNextRun();
