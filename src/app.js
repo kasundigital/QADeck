@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
@@ -8,6 +9,9 @@ const { encrypt, decrypt } = require('./crypto');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
+const dataDir = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'));
+const artifactRoot = path.join(dataDir, 'artifacts');
+const VIEWPORT_OPTIONS = ['desktop', 'laptop', 'tablet', 'mobile', 'small-mobile'];
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(process.cwd(), 'views'));
@@ -83,6 +87,35 @@ function decryptExtraLoginFields(project) {
   }
 }
 
+function parseViewportProfiles(body) {
+  const values = asArray(body.viewport_profiles).map((value) => String(value));
+  const valid = [...new Set(values.filter((value) => VIEWPORT_OPTIONS.includes(value)))];
+  return valid.length ? valid : ['desktop'];
+}
+
+function getViewportProfiles(project) {
+  try {
+    const parsed = JSON.parse(project?.viewport_profiles || '[]');
+    if (Array.isArray(parsed)) {
+      const valid = parsed.filter((value) => VIEWPORT_OPTIONS.includes(value));
+      if (valid.length) return valid;
+    }
+  } catch {}
+  return ['desktop'];
+}
+
+function featureValue(body, name) {
+  return body[name] === '1' ? 1 : 0;
+}
+
+function artifactAbsolute(webPath) {
+  if (!webPath || !String(webPath).startsWith('/artifacts/')) return null;
+  const relative = String(webPath).slice('/artifacts/'.length);
+  const resolved = path.resolve(artifactRoot, relative);
+  if (resolved !== artifactRoot && !resolved.startsWith(`${artifactRoot}${path.sep}`)) return null;
+  return resolved;
+}
+
 app.get('/health', (req, res) => res.json({ status: 'ok', app: 'QADeck', version: '0.3.0', mode: 'web' }));
 
 app.get('/login', (req, res) => {
@@ -104,7 +137,7 @@ app.post('/login', (req, res) => {
 app.post('/logout', requireAuth, (req, res) => req.session.destroy(() => res.redirect('/login')));
 
 app.use(requireAuth);
-app.use('/artifacts', express.static(path.join(process.env.DATA_DIR || path.join(process.cwd(), 'data'), 'artifacts')));
+app.use('/artifacts', express.static(artifactRoot));
 
 app.get('/', (req, res) => {
   const projects = db.prepare(`
@@ -127,26 +160,39 @@ app.get('/', (req, res) => {
   res.render('dashboard', { projects, totals, email: req.session.email });
 });
 
-app.get('/projects/new', (req, res) => res.render('project-form', { project: null, extraLoginFields: [], error: null }));
+app.get('/projects/new', (req, res) => res.render('project-form', {
+  project: null,
+  extraLoginFields: [],
+  viewportProfiles: ['desktop', 'tablet', 'mobile'],
+  error: null
+}));
 
 app.post('/projects', (req, res) => {
   const name = String(req.body.name || '').trim();
   const baseUrl = String(req.body.base_url || '').trim();
   const extraLoginFields = parseExtraLoginFields(req.body);
-  if (!name || !baseUrl) return res.status(400).render('project-form', { project: req.body, extraLoginFields, error: 'Project name and Base URL are required.' });
+  const viewportProfiles = parseViewportProfiles(req.body);
+  if (!name || !baseUrl) return res.status(400).render('project-form', { project: req.body, extraLoginFields, viewportProfiles, error: 'Project name and Base URL are required.' });
 
-  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: req.body, extraLoginFields, error: 'Please enter a valid Base URL.' }); }
+  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: req.body, extraLoginFields, viewportProfiles, error: 'Please enter a valid Base URL.' }); }
 
   const result = db.prepare(`
-    INSERT INTO projects (name, base_url, login_url, username, password_enc, extra_login_fields_enc)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO projects (
+      name, base_url, login_url, username, password_enc, extra_login_fields_enc,
+      viewport_profiles, enable_visual, enable_accessibility, enable_trace, enable_video
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     name,
     baseUrl,
     String(req.body.login_url || '').trim() || null,
     String(req.body.username || '').trim() || null,
     encrypt(req.body.password || ''),
-    encryptExtraLoginFields(extraLoginFields)
+    encryptExtraLoginFields(extraLoginFields),
+    JSON.stringify(viewportProfiles),
+    featureValue(req.body, 'enable_visual'),
+    featureValue(req.body, 'enable_accessibility'),
+    featureValue(req.body, 'enable_trace'),
+    featureValue(req.body, 'enable_video')
   );
 
   res.redirect(`/projects/${result.lastInsertRowid}`);
@@ -162,7 +208,12 @@ app.get('/projects/:id', (req, res) => {
 app.get('/projects/:id/edit', (req, res) => {
   const project = db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);
   if (!project) return res.status(404).send('Project not found');
-  res.render('project-form', { project, extraLoginFields: decryptExtraLoginFields(project), error: null });
+  res.render('project-form', {
+    project,
+    extraLoginFields: decryptExtraLoginFields(project),
+    viewportProfiles: getViewportProfiles(project),
+    error: null
+  });
 });
 
 app.post('/projects/:id', (req, res) => {
@@ -171,8 +222,9 @@ app.post('/projects/:id', (req, res) => {
   const name = String(req.body.name || '').trim();
   const baseUrl = String(req.body.base_url || '').trim();
   const extraLoginFields = parseExtraLoginFields(req.body);
-  if (!name || !baseUrl) return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, error: 'Project name and Base URL are required.' });
-  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, error: 'Please enter a valid Base URL.' }); }
+  const viewportProfiles = parseViewportProfiles(req.body);
+  if (!name || !baseUrl) return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, viewportProfiles, error: 'Project name and Base URL are required.' });
+  try { new URL(baseUrl); } catch { return res.status(400).render('project-form', { project: { ...project, ...req.body }, extraLoginFields, viewportProfiles, error: 'Please enter a valid Base URL.' }); }
 
   const passwordSql = req.body.password ? ', password_enc=?' : '';
   const params = [
@@ -180,14 +232,21 @@ app.post('/projects/:id', (req, res) => {
     baseUrl,
     String(req.body.login_url || '').trim() || null,
     String(req.body.username || '').trim() || null,
-    encryptExtraLoginFields(extraLoginFields)
+    encryptExtraLoginFields(extraLoginFields),
+    JSON.stringify(viewportProfiles),
+    featureValue(req.body, 'enable_visual'),
+    featureValue(req.body, 'enable_accessibility'),
+    featureValue(req.body, 'enable_trace'),
+    featureValue(req.body, 'enable_video')
   ];
   if (req.body.password) params.push(encrypt(req.body.password));
   params.push(project.id);
 
   db.prepare(`
     UPDATE projects
-    SET name=?, base_url=?, login_url=?, username=?, extra_login_fields_enc=?${passwordSql}, updated_at=CURRENT_TIMESTAMP
+    SET name=?, base_url=?, login_url=?, username=?, extra_login_fields_enc=?,
+        viewport_profiles=?, enable_visual=?, enable_accessibility=?, enable_trace=?, enable_video=?
+        ${passwordSql}, updated_at=CURRENT_TIMESTAMP
     WHERE id=?
   `).run(...params);
   res.redirect(`/projects/${project.id}`);
@@ -218,7 +277,7 @@ app.get('/runs/:id', (req, res) => {
   if (!run) return res.status(404).send('Run not found');
   const pages = db.prepare('SELECT * FROM test_pages WHERE run_id=? ORDER BY id').all(run.id);
   const issues = db.prepare(`
-    SELECT i.*, p.url AS page_url, p.screenshot_path
+    SELECT i.*, p.url AS page_url, p.screenshot_path, p.viewport
     FROM test_issues i LEFT JOIN test_pages p ON p.id=i.page_id
     WHERE i.run_id=?
     ORDER BY CASE i.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, i.id
@@ -226,18 +285,49 @@ app.get('/runs/:id', (req, res) => {
   res.render('run', { run, pages, issues });
 });
 
+app.post('/pages/:id/approve-baseline', (req, res) => {
+  const page = db.prepare(`
+    SELECT tp.*, tr.project_id, tr.id AS run_id
+    FROM test_pages tp JOIN test_runs tr ON tr.id=tp.run_id
+    WHERE tp.id=?
+  `).get(req.params.id);
+  if (!page) return res.status(404).send('Page result not found');
+
+  const source = artifactAbsolute(page.screenshot_path);
+  if (!source || !fs.existsSync(source)) return res.status(400).send('Current screenshot is not available');
+
+  let baselinePath = page.baseline_path;
+  if (!baselinePath) {
+    const hash = crypto.createHash('sha1').update(page.url).digest('hex').slice(0, 20);
+    baselinePath = `/artifacts/baselines/${page.project_id}/${page.viewport || 'desktop'}/${hash}.png`;
+  }
+  const destination = artifactAbsolute(baselinePath);
+  if (!destination) return res.status(400).send('Invalid baseline path');
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(source, destination);
+
+  if (page.diff_path) {
+    const diff = artifactAbsolute(page.diff_path);
+    if (diff && fs.existsSync(diff)) fs.rmSync(diff, { force: true });
+  }
+
+  db.prepare('UPDATE test_pages SET baseline_path=?, diff_path=NULL, visual_change_pct=0 WHERE id=?').run(baselinePath, page.id);
+  res.redirect(`/runs/${page.run_id}`);
+});
+
 app.get('/api/runs/:id', (req, res) => {
   const run = db.prepare('SELECT * FROM test_runs WHERE id=?').get(req.params.id);
   if (!run) return res.status(404).json({ error: 'Not found' });
 
   const latestPages = db.prepare(`
-    SELECT id, url, title, status_code, screenshot_path, duration_ms
-    FROM test_pages WHERE run_id=? ORDER BY id DESC LIMIT 5
+    SELECT id, url, title, status_code, screenshot_path, duration_ms, viewport,
+           baseline_path, diff_path, visual_change_pct, accessibility_count
+    FROM test_pages WHERE run_id=? ORDER BY id DESC LIMIT 10
   `).all(run.id);
 
   const latestIssues = db.prepare(`
     SELECT id, severity, category, message, details, page_id
-    FROM test_issues WHERE run_id=? ORDER BY id DESC LIMIT 10
+    FROM test_issues WHERE run_id=? ORDER BY id DESC LIMIT 20
   `).all(run.id);
 
   res.json({ ...run, latest_pages: latestPages, latest_issues: latestIssues });
