@@ -13,8 +13,22 @@ QADeck is a self-hosted, Docker-first web QA platform powered by Playwright. It 
 - Axe accessibility checks
 - Performance/Web Vitals-style metrics: TTFB, load, LCP and CLS with a per-project performance budget
 - Full-page screenshots, Playwright traces and browser videos
+- Professional compact A4 PDF/print report export from every run
 - Scheduled recurring QA runs
 - Automatic stale/interrupted run recovery
+
+### PDF reports
+Every run report includes an **Export PDF** action. The print-optimized A4 layout removes dashboard navigation and keeps the QA evidence compact while preserving the full report content:
+- Project, run type, run status and timestamps
+- Run totals and pass/issue counts
+- AI summary when available
+- Scenario step results including failed-step evidence
+- Full issue list with severity, details, URLs and screenshots
+- Page/device screenshots
+- Accessibility, visual-regression and performance metrics
+- Notification delivery history
+
+In Chrome/Chromium, click **Export PDF** and choose **Save as PDF** in the print dialog. Long reports flow across additional A4 pages instead of truncating report data.
 
 ### Login and permissions
 - Encrypted default project login
