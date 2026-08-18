@@ -1,17 +1,86 @@
 <%- include('partials/header', { title: project && project.id ? 'Edit Project' : 'Add Project', email: '' }) %>
-<div class="page-head compact"><div><span class="eyebrow">PROJECT SETUP</span><h1><%= project && project.id ? 'Edit project' : 'Add project' %></h1><p>Configure the target site and optional login account QADeck should use.</p></div></div>
+<%
+  const editing = Boolean(project && project.id);
+  const visualEnabled = project ? Number(project.enable_visual ?? 1) === 1 || project.enable_visual === '1' : true;
+  const accessibilityEnabled = project ? Number(project.enable_accessibility ?? 1) === 1 || project.enable_accessibility === '1' : true;
+  const traceEnabled = project ? Number(project.enable_trace ?? 1) === 1 || project.enable_trace === '1' : true;
+  const videoEnabled = project ? Number(project.enable_video ?? 1) === 1 || project.enable_video === '1' : true;
+  const fields = extraLoginFields && extraLoginFields.length ? extraLoginFields : [];
+%>
+<div class="page-head compact"><div><span class="eyebrow">PROJECT SETUP</span><h1><%= editing ? 'Edit project' : 'Add project' %></h1><p>Configure the target site, login flow and the QA checks to run in the background.</p></div></div>
 
-<div class="form-card">
+<div class="form-card wide-form">
   <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
-  <form method="post" action="<%= project && project.id ? '/projects/' + project.id : '/projects' %>" class="stack-form">
-    <div class="form-section"><h3>Website</h3><p>QADeck only follows same-origin links and avoids paths that look destructive.</p></div>
+  <form method="post" action="<%= editing ? '/projects/' + project.id : '/projects' %>" class="stack-form">
+    <div class="form-section"><h3>Website</h3><p>QADeck follows same-origin links and avoids paths that look destructive.</p></div>
     <label>Project name<input name="name" required placeholder="IMS Support System" value="<%= project?.name || '' %>"></label>
     <label>Base URL<input name="base_url" type="url" required placeholder="https://staging.example.com/" value="<%= project?.base_url || '' %>"></label>
-    <div class="form-section divider"><h3>Login (optional)</h3><p>Credentials are encrypted before being stored. QADeck attempts a conventional username/password login before crawling.</p></div>
+
+    <div class="form-section divider"><h3>Login (optional)</h3><p>Credentials and additional login-field values are encrypted before storage.</p></div>
     <label>Login URL<input name="login_url" placeholder="https://staging.example.com/login" value="<%= project?.login_url || '' %>"></label>
     <label>Username / email<input name="username" autocomplete="off" value="<%= project?.username || '' %>"></label>
-    <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="<%= project && project.id ? 'Leave blank to keep current password' : '' %>"></label>
-    <div class="form-actions"><a class="btn secondary" href="<%= project && project.id ? '/projects/' + project.id : '/' %>">Cancel</a><button class="btn primary" type="submit"><%= project && project.id ? 'Save changes' : 'Add project' %></button></div>
+    <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="<%= editing ? 'Leave blank to keep current password' : '' %>"></label>
+
+    <div class="subsection-head">
+      <div><h4>Additional login fields</h4><p>Add company code, branch, tenant, domain, PIN or any other field required before login.</p></div>
+      <button class="btn secondary" type="button" id="add-extra-field">＋ Add field</button>
+    </div>
+    <div id="extra-fields" class="extra-fields">
+      <% fields.forEach((field) => { %>
+        <div class="extra-field-row">
+          <label>Field name<input name="extra_field_name" placeholder="Company code" value="<%= field.name || '' %>"></label>
+          <label>Value<input name="extra_field_value" autocomplete="off" value="<%= field.value || '' %>"></label>
+          <label>Type<select name="extra_field_type"><option value="auto" <%= field.type === 'auto' ? 'selected' : '' %>>Auto</option><option value="text" <%= field.type === 'text' ? 'selected' : '' %>>Text</option><option value="password" <%= field.type === 'password' ? 'selected' : '' %>>Password</option><option value="select" <%= field.type === 'select' ? 'selected' : '' %>>Dropdown</option></select></label>
+          <label>CSS selector <span class="optional">optional</span><input name="extra_field_selector" placeholder="#company, [name=tenant]" value="<%= field.selector || '' %>"></label>
+          <button type="button" class="icon-remove" aria-label="Remove field">×</button>
+        </div>
+      <% }) %>
+    </div>
+    <p class="form-hint">Leave CSS selector empty and QADeck will try to match the field by its label, name, ID or placeholder.</p>
+
+    <div class="form-section divider"><h3>Responsive devices</h3><p>The same site can be checked at multiple screen sizes in one background run.</p></div>
+    <div class="option-grid viewport-options">
+      <% [
+        ['desktop', 'Desktop', '1440 × 900'],
+        ['laptop', 'Laptop', '1366 × 768'],
+        ['tablet', 'Tablet', '768 × 1024'],
+        ['mobile', 'Mobile', '390 × 844'],
+        ['small-mobile', 'Small mobile', '360 × 800']
+      ].forEach(([value, label, size]) => { %>
+        <label class="option-card"><input type="checkbox" name="viewport_profiles" value="<%= value %>" <%= viewportProfiles.includes(value) ? 'checked' : '' %>><span><strong><%= label %></strong><small><%= size %></small></span></label>
+      <% }) %>
+    </div>
+
+    <div class="form-section divider"><h3>QA features</h3><p>Choose the automated checks and debugging artifacts for this project.</p></div>
+    <div class="option-grid feature-options">
+      <label class="option-card"><input type="checkbox" name="enable_visual" value="1" <%= visualEnabled ? 'checked' : '' %>><span><strong>Visual regression</strong><small>Compare screenshots with approved baselines.</small></span></label>
+      <label class="option-card"><input type="checkbox" name="enable_accessibility" value="1" <%= accessibilityEnabled ? 'checked' : '' %>><span><strong>Accessibility</strong><small>Run Axe checks for WCAG-related issues.</small></span></label>
+      <label class="option-card"><input type="checkbox" name="enable_trace" value="1" <%= traceEnabled ? 'checked' : '' %>><span><strong>Playwright trace</strong><small>Keep trace data for debugging a run.</small></span></label>
+      <label class="option-card"><input type="checkbox" name="enable_video" value="1" <%= videoEnabled ? 'checked' : '' %>><span><strong>Browser video</strong><small>Record the automated browser session.</small></span></label>
+    </div>
+
+    <div class="form-actions"><a class="btn secondary" href="<%= editing ? '/projects/' + project.id : '/' %>">Cancel</a><button class="btn primary" type="submit"><%= editing ? 'Save changes' : 'Add project' %></button></div>
   </form>
 </div>
+
+<template id="extra-field-template">
+  <div class="extra-field-row">
+    <label>Field name<input name="extra_field_name" placeholder="Company code"></label>
+    <label>Value<input name="extra_field_value" autocomplete="off"></label>
+    <label>Type<select name="extra_field_type"><option value="auto">Auto</option><option value="text">Text</option><option value="password">Password</option><option value="select">Dropdown</option></select></label>
+    <label>CSS selector <span class="optional">optional</span><input name="extra_field_selector" placeholder="#company, [name=tenant]"></label>
+    <button type="button" class="icon-remove" aria-label="Remove field">×</button>
+  </div>
+</template>
+<script>
+(() => {
+  const list = document.getElementById('extra-fields');
+  const template = document.getElementById('extra-field-template');
+  document.getElementById('add-extra-field').addEventListener('click', () => list.appendChild(template.content.cloneNode(true)));
+  list.addEventListener('click', (event) => {
+    const remove = event.target.closest('.icon-remove');
+    if (remove) remove.closest('.extra-field-row').remove();
+  });
+})();
+</script>
 <%- include('partials/footer') %>
