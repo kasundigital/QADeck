@@ -1,107 +1,49 @@
 <%- include('partials/header', { title: project && project.id ? 'Edit Project' : 'Add Project', email: '' }) %>
 <%
-  const editing = Boolean(project && project.id);
-  const visualEnabled = project ? Number(project.enable_visual ?? 1) === 1 || project.enable_visual === '1' : true;
-  const accessibilityEnabled = project ? Number(project.enable_accessibility ?? 1) === 1 || project.enable_accessibility === '1' : true;
-  const traceEnabled = project ? Number(project.enable_trace ?? 1) === 1 || project.enable_trace === '1' : true;
-  const videoEnabled = project ? Number(project.enable_video ?? 1) === 1 || project.enable_video === '1' : true;
-  const scheduleEnabled = project ? Number(project.schedule_enabled ?? 0) === 1 || project.schedule_enabled === '1' : false;
-  const scheduleInterval = Number(project?.schedule_interval_minutes || 1440);
-  const fields = extraLoginFields && extraLoginFields.length ? extraLoginFields : [];
+const editing=Boolean(project&&project.id), fields=extraLoginFields&&extraLoginFields.length?extraLoginFields:[];
+const on=(name,def=true)=>project ? Number(project[name] ?? (def?1:0))===1 || project[name]==='1' : def;
+const scheduleEnabled=project?Number(project.schedule_enabled||0)===1:false, scheduleInterval=Number(project?.schedule_interval_minutes||1440);
 %>
-<div class="page-head compact"><div><span class="eyebrow">PROJECT SETUP</span><h1><%= editing ? 'Edit project' : 'Add project' %></h1><p>Configure the target site, login flow and the QA checks to run in the background.</p></div></div>
+<div class="page-head compact"><div><span class="eyebrow">PROJECT SETUP</span><h1><%= editing?'Edit project':'Add project' %></h1><p>Configure login, QA checks, performance budgets, scheduling and notifications.</p></div></div>
+<div class="form-card wide-form"><% if(error){%><div class="alert danger"><%= error %></div><%}%>
+<form method="post" action="<%= editing?'/projects/'+project.id:'/projects' %>" class="stack-form">
+<div class="form-section"><h3>Website</h3></div>
+<label>Project name<input name="name" required value="<%= project?.name||'' %>" placeholder="IMS Support System"></label>
+<label>Base URL<input name="base_url" type="url" required value="<%= project?.base_url||'' %>" placeholder="https://staging.example.com/"></label>
 
-<div class="form-card wide-form">
-  <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
-  <form method="post" action="<%= editing ? '/projects/' + project.id : '/projects' %>" class="stack-form">
-    <div class="form-section"><h3>Website</h3><p>QADeck follows same-origin links and avoids paths that look destructive.</p></div>
-    <label>Project name<input name="name" required placeholder="IMS Support System" value="<%= project?.name || '' %>"></label>
-    <label>Base URL<input name="base_url" type="url" required placeholder="https://staging.example.com/" value="<%= project?.base_url || '' %>"></label>
+<div class="form-section divider"><h3>Default login <span class="optional">optional</span></h3><p>You can also create separate Admin / Staff / Customer roles after saving the project.</p></div>
+<label>Login URL<input name="login_url" value="<%= project?.login_url||'' %>" placeholder="https://example.com/login"></label>
+<label>Username / email<input name="username" autocomplete="off" value="<%= project?.username||'' %>"></label>
+<label>Password<input name="password" type="password" autocomplete="new-password" placeholder="<%= editing?'Leave blank to keep current password':'' %>"></label>
+<div class="subsection-head"><div><h4>Additional login fields</h4><p>Company code, branch, tenant, domain, PIN or custom fields.</p></div><button class="btn secondary" type="button" id="add-extra-field">＋ Add field</button></div>
+<div id="extra-fields" class="extra-fields"><% fields.forEach((field)=>{ %><div class="extra-field-row"><label>Field name<input name="extra_field_name" value="<%= field.name||'' %>"></label><label>Value<input name="extra_field_value" value="<%= field.value||'' %>"></label><label>Type<select name="extra_field_type"><% ['auto','text','password','select'].forEach(t=>{ %><option value="<%=t%>" <%=field.type===t?'selected':''%>><%=t%></option><%})%></select></label><label>CSS selector<input name="extra_field_selector" value="<%= field.selector||'' %>" placeholder="#company"></label><button type="button" class="icon-remove">×</button></div><%})%></div>
 
-    <div class="form-section divider"><h3>Login (optional)</h3><p>Credentials and additional login-field values are encrypted before storage.</p></div>
-    <label>Login URL<input name="login_url" placeholder="https://staging.example.com/login" value="<%= project?.login_url || '' %>"></label>
-    <label>Username / email<input name="username" autocomplete="off" value="<%= project?.username || '' %>"></label>
-    <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="<%= editing ? 'Leave blank to keep current password' : '' %>"></label>
+<div class="form-section divider"><h3>Responsive devices</h3></div>
+<div class="option-grid viewport-options"><% [['desktop','Desktop','1440×900'],['laptop','Laptop','1366×768'],['tablet','Tablet','768×1024'],['mobile','Mobile','390×844'],['small-mobile','Small mobile','360×800']].forEach(([v,l,s])=>{ %><label class="option-card"><input type="checkbox" name="viewport_profiles" value="<%=v%>" <%=viewportProfiles.includes(v)?'checked':''%>><span><strong><%=l%></strong><small><%=s%></small></span></label><%})%></div>
 
-    <div class="subsection-head">
-      <div><h4>Additional login fields</h4><p>Add company code, branch, tenant, domain, PIN or any other field required before login.</p></div>
-      <button class="btn secondary" type="button" id="add-extra-field">＋ Add field</button>
-    </div>
-    <div id="extra-fields" class="extra-fields">
-      <% fields.forEach((field) => { %>
-        <div class="extra-field-row">
-          <label>Field name<input name="extra_field_name" placeholder="Company code" value="<%= field.name || '' %>"></label>
-          <label>Value<input name="extra_field_value" autocomplete="off" value="<%= field.value || '' %>"></label>
-          <label>Type<select name="extra_field_type"><option value="auto" <%= field.type === 'auto' ? 'selected' : '' %>>Auto</option><option value="text" <%= field.type === 'text' ? 'selected' : '' %>>Text</option><option value="password" <%= field.type === 'password' ? 'selected' : '' %>>Password</option><option value="select" <%= field.type === 'select' ? 'selected' : '' %>>Dropdown</option></select></label>
-          <label>CSS selector <span class="optional">optional</span><input name="extra_field_selector" placeholder="#company, [name=tenant]" value="<%= field.selector || '' %>"></label>
-          <button type="button" class="icon-remove" aria-label="Remove field">×</button>
-        </div>
-      <% }) %>
-    </div>
-    <p class="form-hint">Leave CSS selector empty and QADeck will try to match the field by its label, name, ID or placeholder.</p>
-
-    <div class="form-section divider"><h3>Responsive devices</h3><p>The same site can be checked at multiple screen sizes in one background run.</p></div>
-    <div class="option-grid viewport-options">
-      <% [
-        ['desktop', 'Desktop', '1440 × 900'],
-        ['laptop', 'Laptop', '1366 × 768'],
-        ['tablet', 'Tablet', '768 × 1024'],
-        ['mobile', 'Mobile', '390 × 844'],
-        ['small-mobile', 'Small mobile', '360 × 800']
-      ].forEach(([value, label, size]) => { %>
-        <label class="option-card"><input type="checkbox" name="viewport_profiles" value="<%= value %>" <%= viewportProfiles.includes(value) ? 'checked' : '' %>><span><strong><%= label %></strong><small><%= size %></small></span></label>
-      <% }) %>
-    </div>
-
-    <div class="form-section divider"><h3>QA features</h3><p>Choose the automated checks and debugging artifacts for this project.</p></div>
-    <div class="option-grid feature-options">
-      <label class="option-card"><input type="checkbox" name="enable_visual" value="1" <%= visualEnabled ? 'checked' : '' %>><span><strong>Visual regression</strong><small>Compare screenshots with approved baselines.</small></span></label>
-      <label class="option-card"><input type="checkbox" name="enable_accessibility" value="1" <%= accessibilityEnabled ? 'checked' : '' %>><span><strong>Accessibility</strong><small>Run Axe checks for WCAG-related issues.</small></span></label>
-      <label class="option-card"><input type="checkbox" name="enable_trace" value="1" <%= traceEnabled ? 'checked' : '' %>><span><strong>Playwright trace</strong><small>Keep trace data for debugging a run.</small></span></label>
-      <label class="option-card"><input type="checkbox" name="enable_video" value="1" <%= videoEnabled ? 'checked' : '' %>><span><strong>Browser video</strong><small>Record the automated browser session.</small></span></label>
-    </div>
-
-    <div class="form-section divider"><h3>Scheduled QA</h3><p>Let the background worker automatically queue full QA crawls even when nobody has QADeck open.</p></div>
-    <label class="option-card schedule-toggle"><input id="schedule-enabled" type="checkbox" name="schedule_enabled" value="1" <%= scheduleEnabled ? 'checked' : '' %>><span><strong>Enable recurring QA crawl</strong><small>The schedule begins from the time you save this project.</small></span></label>
-    <label>Run automatically every
-      <select id="schedule-interval" name="schedule_interval_minutes">
-        <option value="15" <%= scheduleInterval === 15 ? 'selected' : '' %>>15 minutes</option>
-        <option value="30" <%= scheduleInterval === 30 ? 'selected' : '' %>>30 minutes</option>
-        <option value="60" <%= scheduleInterval === 60 ? 'selected' : '' %>>1 hour</option>
-        <option value="360" <%= scheduleInterval === 360 ? 'selected' : '' %>>6 hours</option>
-        <option value="720" <%= scheduleInterval === 720 ? 'selected' : '' %>>12 hours</option>
-        <option value="1440" <%= scheduleInterval === 1440 ? 'selected' : '' %>>24 hours</option>
-        <option value="10080" <%= scheduleInterval === 10080 ? 'selected' : '' %>>7 days</option>
-      </select>
-    </label>
-
-    <div class="form-actions"><a class="btn secondary" href="<%= editing ? '/projects/' + project.id : '/' %>">Cancel</a><button class="btn primary" type="submit"><%= editing ? 'Save changes' : 'Add project' %></button></div>
-  </form>
+<div class="form-section divider"><h3>QA features</h3></div>
+<div class="option-grid feature-options">
+<label class="option-card"><input type="checkbox" name="enable_visual" value="1" <%=on('enable_visual')?'checked':''%>><span><strong>Visual regression</strong><small>Baseline/current/diff comparison.</small></span></label>
+<label class="option-card"><input type="checkbox" name="enable_accessibility" value="1" <%=on('enable_accessibility')?'checked':''%>><span><strong>Accessibility</strong><small>Axe accessibility scan.</small></span></label>
+<label class="option-card"><input type="checkbox" name="enable_trace" value="1" <%=on('enable_trace')?'checked':''%>><span><strong>Playwright trace</strong><small>Detailed debug trace.</small></span></label>
+<label class="option-card"><input type="checkbox" name="enable_video" value="1" <%=on('enable_video')?'checked':''%>><span><strong>Browser video</strong><small>Record browser session.</small></span></label>
+<label class="option-card"><input type="checkbox" name="enable_performance" value="1" <%=on('enable_performance')?'checked':''%>><span><strong>Performance / Web Vitals</strong><small>TTFB, load, LCP and CLS checks.</small></span></label>
 </div>
+<label>Performance budget (ms)<input name="performance_budget_ms" type="number" min="500" step="100" value="<%= project?.performance_budget_ms||3000 %>"></label>
 
-<template id="extra-field-template">
-  <div class="extra-field-row">
-    <label>Field name<input name="extra_field_name" placeholder="Company code"></label>
-    <label>Value<input name="extra_field_value" autocomplete="off"></label>
-    <label>Type<select name="extra_field_type"><option value="auto">Auto</option><option value="text">Text</option><option value="password">Password</option><option value="select">Dropdown</option></select></label>
-    <label>CSS selector <span class="optional">optional</span><input name="extra_field_selector" placeholder="#company, [name=tenant]"></label>
-    <button type="button" class="icon-remove" aria-label="Remove field">×</button>
-  </div>
-</template>
-<script>
-(() => {
-  const list = document.getElementById('extra-fields');
-  const template = document.getElementById('extra-field-template');
-  document.getElementById('add-extra-field').addEventListener('click', () => list.appendChild(template.content.cloneNode(true)));
-  list.addEventListener('click', (event) => {
-    const remove = event.target.closest('.icon-remove');
-    if (remove) remove.closest('.extra-field-row').remove();
-  });
-  const scheduleEnabled = document.getElementById('schedule-enabled');
-  const scheduleInterval = document.getElementById('schedule-interval');
-  const syncSchedule = () => { scheduleInterval.disabled = !scheduleEnabled.checked; };
-  scheduleEnabled.addEventListener('change', syncSchedule);
-  syncSchedule();
-})();
-</script>
+<div class="form-section divider"><h3>Scheduled QA</h3></div>
+<label class="option-card"><input id="schedule-enabled" type="checkbox" name="schedule_enabled" value="1" <%=scheduleEnabled?'checked':''%>><span><strong>Enable recurring crawl</strong><small>Runs in the background automatically.</small></span></label>
+<label>Run every<select id="schedule-interval" name="schedule_interval_minutes"><% [[15,'15 minutes'],[30,'30 minutes'],[60,'1 hour'],[360,'6 hours'],[720,'12 hours'],[1440,'24 hours'],[10080,'7 days']].forEach(([v,l])=>{ %><option value="<%=v%>" <%=scheduleInterval===v?'selected':''%>><%=l%></option><%})%></select></label>
+
+<div class="form-section divider"><h3>Notifications</h3><p>Send results when a run completes. Leave channels blank to disable them.</p></div>
+<label>Webhook / Discord URL<input name="webhook_url" type="url" placeholder="https://..." value=""></label>
+<% if(editing && project.webhook_url_enc){ %><label class="option-card"><input type="checkbox" name="clear_webhook" value="1"><span><strong>Remove saved webhook</strong><small>A saved encrypted webhook is currently configured.</small></span></label><%}%>
+<label>Telegram chat ID<input name="telegram_chat_id" value="<%= project?.telegram_chat_id||'' %>" placeholder="123456789"></label>
+<label>Email address<input name="notify_email" type="email" value="<%= project?.notify_email||'' %>"></label>
+<div class="option-grid"><label class="option-card"><input type="checkbox" name="notify_on_failure" value="1" <%=on('notify_on_failure')?'checked':''%>><span><strong>Notify on issues/failure</strong></span></label><label class="option-card"><input type="checkbox" name="notify_on_success" value="1" <%=on('notify_on_success',false)?'checked':''%>><span><strong>Notify on clean success</strong></span></label></div>
+
+<div class="form-actions"><a class="btn secondary" href="<%=editing?'/projects/'+project.id:'/'%>">Cancel</a><button class="btn primary" type="submit"><%=editing?'Save changes':'Add project'%></button></div>
+</form></div>
+<template id="extra-field-template"><div class="extra-field-row"><label>Field name<input name="extra_field_name" placeholder="Company code"></label><label>Value<input name="extra_field_value"></label><label>Type<select name="extra_field_type"><option value="auto">Auto</option><option value="text">Text</option><option value="password">Password</option><option value="select">Dropdown</option></select></label><label>CSS selector<input name="extra_field_selector" placeholder="#company"></label><button type="button" class="icon-remove">×</button></div></template>
+<script>(()=>{const list=document.getElementById('extra-fields'),tpl=document.getElementById('extra-field-template');document.getElementById('add-extra-field').onclick=()=>list.appendChild(tpl.content.cloneNode(true));list.onclick=e=>{const b=e.target.closest('.icon-remove');if(b)b.closest('.extra-field-row').remove();};const en=document.getElementById('schedule-enabled'),sel=document.getElementById('schedule-interval');const sync=()=>sel.disabled=!en.checked;en.onchange=sync;sync();})();</script>
 <%- include('partials/footer') %>
