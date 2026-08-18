@@ -1,4 +1,5 @@
 <%- include('partials/header', { title: project && project.id ? 'Edit Project' : 'Add Project', email: '' }) %>
+<link rel="stylesheet" href="/static/login-inspector.css">
 <%
 const editing=Boolean(project&&project.id), fields=extraLoginFields&&extraLoginFields.length?extraLoginFields:[];
 const on=(name,def=true)=>project ? Number(project[name] ?? (def?1:0))===1 || project[name]==='1' : def;
@@ -13,9 +14,21 @@ const scheduleEnabled=project?Number(project.schedule_enabled||0)===1:false, sch
 
 <div class="form-section divider"><h3>Default login <span class="optional">optional</span></h3><p>You can also create separate Admin / Staff / Customer roles after saving the project.</p></div>
 <label>Login URL<input name="login_url" value="<%= project?.login_url||'' %>" placeholder="https://example.com/login"></label>
+<div class="login-inspector" data-login-inspector data-field-list="extra-fields" data-field-template="extra-field-template">
+  <div class="login-inspector-bar">
+    <div><strong>Inspect login page</strong><p>QADeck opens the URL safely in Chromium and detects the fields you need to configure.</p></div>
+    <button class="btn secondary" type="button" data-inspect-login>⌕ Inspect page</button>
+  </div>
+  <div class="inspector-status" data-inspector-status>Enter the Login URL above, then inspect it.</div>
+  <div class="inspector-results" data-inspector-results hidden>
+    <div class="inspector-summary" data-inspector-summary></div>
+    <div class="inspector-actions"><button class="btn secondary small-btn" type="button" data-add-all-inspected hidden>＋ Add detected extra fields</button></div>
+    <div class="inspect-controls" data-inspector-controls></div>
+  </div>
+</div>
 <label>Username / email<input name="username" autocomplete="off" value="<%= project?.username||'' %>"></label>
 <label>Password<input name="password" type="password" autocomplete="new-password" placeholder="<%= editing?'Leave blank to keep current password':'' %>"></label>
-<div class="subsection-head"><div><h4>Additional login fields</h4><p>Company code, branch, tenant, domain, PIN or custom fields.</p></div><button class="btn secondary" type="button" id="add-extra-field">＋ Add field</button></div>
+<div class="subsection-head"><div><h4>Additional login fields</h4><p>Company code, branch, tenant, domain, PIN or custom fields. Use Inspect page above to detect these automatically.</p></div><button class="btn secondary" type="button" id="add-extra-field">＋ Add field</button></div>
 <div id="extra-fields" class="extra-fields"><% fields.forEach((field)=>{ %><div class="extra-field-row"><label>Field name<input name="extra_field_name" value="<%= field.name||'' %>"></label><label>Value<input name="extra_field_value" value="<%= field.value||'' %>"></label><label>Type<select name="extra_field_type"><% ['auto','text','password','select'].forEach(t=>{ %><option value="<%=t%>" <%=field.type===t?'selected':''%>><%=t%></option><%})%></select></label><label>CSS selector<input name="extra_field_selector" value="<%= field.selector||'' %>" placeholder="#company"></label><button type="button" class="icon-remove">×</button></div><%})%></div>
 
 <div class="form-section divider"><h3>Responsive devices</h3></div>
@@ -46,4 +59,5 @@ const scheduleEnabled=project?Number(project.schedule_enabled||0)===1:false, sch
 </form></div>
 <template id="extra-field-template"><div class="extra-field-row"><label>Field name<input name="extra_field_name" placeholder="Company code"></label><label>Value<input name="extra_field_value"></label><label>Type<select name="extra_field_type"><option value="auto">Auto</option><option value="text">Text</option><option value="password">Password</option><option value="select">Dropdown</option></select></label><label>CSS selector<input name="extra_field_selector" placeholder="#company"></label><button type="button" class="icon-remove">×</button></div></template>
 <script>(()=>{const list=document.getElementById('extra-fields'),tpl=document.getElementById('extra-field-template');document.getElementById('add-extra-field').onclick=()=>list.appendChild(tpl.content.cloneNode(true));list.onclick=e=>{const b=e.target.closest('.icon-remove');if(b)b.closest('.extra-field-row').remove();};const en=document.getElementById('schedule-enabled'),sel=document.getElementById('schedule-interval');const sync=()=>sel.disabled=!en.checked;en.onchange=sync;sync();})();</script>
+<script src="/static/login-inspector.js"></script>
 <%- include('partials/footer') %>
