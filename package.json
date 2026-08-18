@@ -8,7 +8,7 @@
     "start": "node --require ./src/inspector-preload.js src/app.js",
     "worker": "node src/worker.js",
     "dev": "node --watch --require ./src/inspector-preload.js src/app.js",
-    "check": "node --check src/app.js && node --check src/inspector-preload.js && node --check src/worker.js && node --check src/runner.js && node --check src/scenario-runner.js && node --check src/notifier.js && node --check src/ai.js && node --check src/db.js && node --check src/crypto.js"
+    "check": "node --check src/app.js && node --check src/inspector-preload.js && node --check public/login-inspector.js && node --check src/worker.js && node --check src/runner.js && node --check src/scenario-runner.js && node --check src/notifier.js && node --check src/ai.js && node --check src/db.js && node --check src/crypto.js"
   },
   "engines": { "node": ">=22" },
   "dependencies": {
