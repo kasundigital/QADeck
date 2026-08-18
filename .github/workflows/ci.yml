@@ -46,7 +46,7 @@ jobs:
           QADECK_ADMIN_EMAIL: admin@example.com
           QADECK_ADMIN_PASSWORD: ci-password
         run: |
-          node src/app.js >/tmp/qadeck-web.log 2>&1 &
+          npm start >/tmp/qadeck-web.log 2>&1 &
           APP_PID=$!
           trap 'kill $APP_PID || true' EXIT
           for i in {1..20}; do
