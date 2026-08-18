@@ -1,6 +1,6 @@
 <%- include('partials/header', { title: 'Run #' + run.id, email: '' }) %>
 <div class="page-head">
-  <div><span class="eyebrow">TEST REPORT</span><h1><%= run.project_name %> · Run #<%= run.id %></h1><p><%= run.base_url %></p></div>
+  <div><span class="eyebrow"><%= run.run_type === 'scenario' ? 'SCENARIO REPORT' : 'TEST REPORT' %></span><h1><%= run.project_name %> · Run #<%= run.id %></h1><p><%= scenario ? scenario.name + ' · ' : '' %><%= run.base_url %></p></div>
   <div class="head-actions"><a class="btn secondary" href="/projects/<%= run.project_id %>">← Back to project</a><% if (run.trace_path) { %><a class="btn secondary" href="<%= run.trace_path %>" target="_blank">Trace</a><% } %><% if (run.video_path) { %><a class="btn secondary" href="<%= run.video_path %>" target="_blank">Video</a><% } %></div>
 </div>
 
@@ -19,20 +19,36 @@
 
 <div class="stats-grid report-stats">
   <div class="stat-card"><span>Status</span><strong class="capitalize"><%= run.status %></strong></div>
-  <div class="stat-card"><span>Pages / views</span><strong><%= run.pages_scanned %></strong></div>
+  <div class="stat-card"><span><%= run.run_type === 'scenario' ? 'Steps executed' : 'Pages / views' %></span><strong><%= run.pages_scanned %></strong></div>
   <div class="stat-card"><span>Issues</span><strong class="<%= run.issues_count ? 'text-danger' : 'text-success' %>"><%= run.issues_count %></strong></div>
-  <div class="stat-card"><span>Clean views</span><strong><%= run.clean_pages %></strong></div>
+  <div class="stat-card"><span><%= run.run_type === 'scenario' ? 'Steps passed' : 'Clean views' %></span><strong><%= run.clean_pages %></strong></div>
 </div>
 
 <% if (run.trace_path || run.video_path) { %>
 <div class="artifact-strip">
-  <div><strong>Debug artifacts</strong><span>Use these when a browser run is difficult to reproduce manually.</span></div>
+  <div><strong>Debug artifacts</strong><span>Use the trace and video to investigate exactly what the automated browser did.</span></div>
   <div class="head-actions"><% if (run.trace_path) { %><a class="btn secondary" href="<%= run.trace_path %>" target="_blank">Download trace</a><% } %><% if (run.video_path) { %><a class="btn secondary" href="<%= run.video_path %>" target="_blank">Open video</a><% } %></div>
 </div>
 <% } %>
 
+<% if (scenario) { %>
+<div class="section-head"><div><h2><%= scenario.name %></h2><p><%= scenario.description || 'Scenario workflow results by device.' %></p></div></div>
+<% if (stepResults.length) { %>
+<div class="step-results">
+<% stepResults.forEach((step) => { %>
+  <div class="step-result <%= step.status %>">
+    <span class="step-pos">#<%= step.position %></span>
+    <span class="step-action"><%= step.action %></span>
+    <span class="step-message"><span class="viewport-badge"><%= step.viewport || 'desktop' %></span> <%= step.message || step.status %></span>
+    <% if (step.screenshot_path) { %><a href="<%= step.screenshot_path %>" target="_blank">Screenshot</a><% } else { %><span class="status-pill <%= step.status === 'pass' ? 'completed' : (step.status === 'fail' ? 'failed' : '') %>"><%= step.status %></span><% } %>
+  </div>
+<% }) %>
+</div>
+<% } else if (run.status === 'queued' || run.status === 'running') { %><div class="empty-state small"><p>Scenario steps will appear here as the worker executes them.</p></div><% } %>
+<% } %>
+
 <% if (issues.length) { %>
-<div class="section-head"><div><h2>Issues</h2><p>HTTP, JavaScript, network, accessibility, responsive and visual-regression findings appear here while the run is active.</p></div></div>
+<div class="section-head"><div><h2>Issues</h2><p>Functional, HTTP, JavaScript, network, accessibility, responsive and visual-regression findings.</p></div></div>
 <div class="issues-list">
 <% issues.forEach((issue) => { %>
 <article class="issue-card">
