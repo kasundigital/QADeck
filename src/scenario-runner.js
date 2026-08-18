@@ -15,6 +15,10 @@ const VIEWPORTS = {
   'small-mobile': { width: 360, height: 800 }
 };
 
+function enabled(value) {
+  return Number(value) === 1 || value === true;
+}
+
 function cleanUrl(raw, base) {
   try {
     const url = new URL(raw, base);
@@ -68,19 +72,41 @@ async function findExtraField(page, field) {
     const found = await visible(page.locator(field.selector));
     if (found) return found;
   }
-  if (field.name) {
-    try {
-      const byLabel = await visible(page.getByLabel(field.name, { exact: false }));
-      if (byLabel) return byLabel;
-    } catch {}
-    const safe = String(field.name).replace(/"/g, '\\"');
-    return firstVisible(page, [
-      `[name="${safe}"]`,
-      `input[placeholder*="${safe}" i]`,
-      `input[aria-label*="${safe}" i]`,
-      `select[aria-label*="${safe}" i]`
-    ]);
-  }
+
+  if (!field.name) return null;
+
+  try {
+    const byLabel = await visible(page.getByLabel(field.name, { exact: false }));
+    if (byLabel) return byLabel;
+  } catch {}
+
+  const safe = String(field.name).replace(/"/g, '\\"');
+  return firstVisible(page, [
+    `[name="${safe}"]`,
+    `input[placeholder*="${safe}" i]`,
+    `select[placeholder*="${safe}" i]`,
+    `input[aria-label*="${safe}" i]`,
+    `select[aria-label*="${safe}" i]`
+  ]);
+}
+
+async function findUsernameField(page) {
+  const semantic = await firstVisible(page, [
+    'input[type="email"]',
+    'input[name*="email" i]',
+    'input[name*="username" i]',
+    'input[name*="user_name" i]',
+    'input[name*="user" i]',
+    'input[name*="login" i]',
+    'input[autocomplete="username"]'
+  ]);
+  if (semantic) return semantic;
+
+  try {
+    const textInputs = page.locator('input[type="text"]:visible');
+    const count = await textInputs.count();
+    if (count) return textInputs.nth(count - 1);
+  } catch {}
   return null;
 }
 
@@ -95,25 +121,25 @@ async function attemptProjectLogin(page, project) {
     if (!locator) throw new Error(`Could not find extra login field: ${field.name || field.selector}`);
     const tag = await locator.evaluate((element) => element.tagName.toLowerCase());
     if (field.type === 'select' || tag === 'select') {
-      await locator.selectOption({ label: field.value }).catch(() => locator.selectOption(field.value));
+      await locator.selectOption({ label: String(field.value || '') }).catch(() => locator.selectOption(String(field.value || '')));
     } else {
       await locator.fill(String(field.value || ''));
     }
   }
 
-  const username = await firstVisible(page, [
-    'input[type="email"]',
-    'input[name*="email" i]',
-    'input[name*="user" i]',
-    'input[name*="login" i]',
-    'input[type="text"]'
-  ]);
-  const password = await firstVisible(page, ['input[type="password"]']);
+  const username = await findUsernameField(page);
+  const password = await firstVisible(page, ['input[type="password"]', 'input[autocomplete="current-password"]']);
   if (!username || !password) throw new Error('Could not identify username/password fields');
 
   await username.fill(project.username);
   await password.fill(decrypt(project.password_enc));
-  const submit = await firstVisible(page, ['button[type="submit"]', 'input[type="submit"]', 'button:has-text("Login")', 'button:has-text("Sign in")']);
+  const submit = await firstVisible(page, [
+    'button[type="submit"]',
+    'input[type="submit"]',
+    'button:has-text("Login")',
+    'button:has-text("Log in")',
+    'button:has-text("Sign in")'
+  ]);
   if (!submit) throw new Error('Could not identify login submit button');
   await submit.click();
   await page.waitForLoadState('domcontentloaded', { timeout: pageTimeout }).catch(() => {});
@@ -199,7 +225,7 @@ async function runScenario(runId, project, scenarioId, options = {}) {
   const runDir = path.join(artifactRoot, String(runId));
   const videoDir = path.join(runDir, 'videos');
   fs.mkdirSync(runDir, { recursive: true });
-  if (project.enable_video) fs.mkdirSync(videoDir, { recursive: true });
+  if (enabled(project.enable_video)) fs.mkdirSync(videoDir, { recursive: true });
 
   db.prepare(`UPDATE test_runs SET status='running', started_at=COALESCE(started_at,CURRENT_TIMESTAMP), worker_id=COALESCE(worker_id,?), heartbeat_at=CURRENT_TIMESTAMP WHERE id=?`).run(workerId, runId);
 
@@ -229,10 +255,10 @@ async function runScenario(runId, project, scenarioId, options = {}) {
       try {
         context = await browser.newContext({
           viewport,
-          userAgent: `QADeck/0.3 Scenario Runner (${viewportName})`,
-          recordVideo: project.enable_video ? { dir: videoDir, size: viewport } : undefined
+          userAgent: `QADeck/0.4 Scenario Runner (${viewportName})`,
+          recordVideo: enabled(project.enable_video) ? { dir: videoDir, size: viewport } : undefined
         });
-        if (project.enable_trace) {
+        if (enabled(project.enable_trace)) {
           await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
           traceStarted = true;
         }
@@ -240,7 +266,7 @@ async function runScenario(runId, project, scenarioId, options = {}) {
         videoHandle = page.video();
         page.setDefaultTimeout(pageTimeout);
 
-        if (scenario.use_project_login && project.login_url) {
+        if (enabled(scenario.use_project_login) && project.login_url) {
           try {
             await attemptProjectLogin(page, project);
           } catch (error) {
