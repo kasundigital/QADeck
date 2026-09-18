@@ -172,6 +172,7 @@ ensureColumn('test_runs', 'video_path', 'TEXT');
 ensureColumn('test_runs', 'run_type', `TEXT NOT NULL DEFAULT 'crawl'`);
 ensureColumn('test_runs', 'scenario_id', 'INTEGER');
 ensureColumn('test_runs', 'ai_summary', 'TEXT');
+ensureColumn('test_runs', 'agent_run_id', 'INTEGER');
 
 ensureColumn('test_pages', 'viewport', `TEXT NOT NULL DEFAULT 'desktop'`);
 ensureColumn('test_pages', 'baseline_path', 'TEXT');
