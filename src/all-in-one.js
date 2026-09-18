@@ -18,27 +18,41 @@ try {
 }
 
 const generated = {};
-function useValue(name, fallbackFactory, preferSaved = false) {
-  if (preferSaved && saved[name]) return String(saved[name]);
+function useSecret(name) {
   const envValue = process.env[name];
   if (envValue) return envValue;
   if (saved[name]) return String(saved[name]);
-  const value = fallbackFactory();
+  const value = crypto.randomBytes(32).toString('hex');
   generated[name] = value;
   return value;
 }
 
-process.env.QADECK_ADMIN_EMAIL = useValue('QADECK_ADMIN_EMAIL', () => 'admin@qadeck.local', true);
-process.env.QADECK_ADMIN_PASSWORD = useValue('QADECK_ADMIN_PASSWORD', () => crypto.randomBytes(15).toString('base64url'), true);
-process.env.SESSION_SECRET = useValue('SESSION_SECRET', () => crypto.randomBytes(32).toString('hex'));
-process.env.CREDENTIALS_KEY = useValue('CREDENTIALS_KEY', () => crypto.randomBytes(32).toString('hex'));
+process.env.SESSION_SECRET = useSecret('SESSION_SECRET');
+process.env.CREDENTIALS_KEY = useSecret('CREDENTIALS_KEY');
+
+const savedUsername = String(saved.QADECK_ADMIN_USERNAME || saved.QADECK_ADMIN_EMAIL || '').trim();
+const savedPassword = String(saved.QADECK_ADMIN_PASSWORD || '');
+const envUsername = String(process.env.QADECK_ADMIN_USERNAME || process.env.QADECK_ADMIN_EMAIL || '').trim();
+const envPassword = String(process.env.QADECK_ADMIN_PASSWORD || '');
+const envLoginIsUsable = Boolean(envUsername && envPassword && envPassword !== 'change-this-password');
+
+if (savedUsername && savedPassword) {
+  process.env.QADECK_ADMIN_USERNAME = savedUsername;
+  process.env.QADECK_ADMIN_PASSWORD = savedPassword;
+} else if (envLoginIsUsable) {
+  process.env.QADECK_ADMIN_USERNAME = envUsername;
+  process.env.QADECK_ADMIN_PASSWORD = envPassword;
+}
 
 const persisted = {
-  QADECK_ADMIN_EMAIL: process.env.QADECK_ADMIN_EMAIL,
-  QADECK_ADMIN_PASSWORD: process.env.QADECK_ADMIN_PASSWORD,
+  ...saved,
   SESSION_SECRET: process.env.SESSION_SECRET,
   CREDENTIALS_KEY: process.env.CREDENTIALS_KEY
 };
+if (!savedUsername && envLoginIsUsable) {
+  persisted.QADECK_ADMIN_USERNAME = envUsername;
+  persisted.QADECK_ADMIN_PASSWORD = envPassword;
+}
 
 try {
   fs.writeFileSync(configPath, JSON.stringify(persisted, null, 2), { mode: 0o600 });
@@ -48,17 +62,20 @@ try {
   process.exit(1);
 }
 
-const firstSetup = Object.keys(generated).length > 0;
+const loginConfigured = Boolean(
+  String(persisted.QADECK_ADMIN_USERNAME || persisted.QADECK_ADMIN_EMAIL || '').trim()
+  && String(persisted.QADECK_ADMIN_PASSWORD || '')
+);
+
 console.log('============================================================');
 console.log(' QADeck all-in-one container');
 console.log(' Web UI + background QA worker');
 console.log('============================================================');
-console.log(` Login email: ${process.env.QADECK_ADMIN_EMAIL}`);
-if (firstSetup || !saved.QADECK_ADMIN_PASSWORD) {
-  console.log(` Login password: ${process.env.QADECK_ADMIN_PASSWORD}`);
-  console.log(' Save this password. It is persisted in the QADeck data volume.');
+if (loginConfigured) {
+  console.log(' Admin login: configured');
 } else {
-  console.log(' Login password: already configured (not printed again)');
+  console.log(' First-run setup: required');
+  console.log(' Open QADeck in your browser to create the admin login.');
 }
 console.log(' Open: http://YOUR-SERVER-IP:' + (process.env.PORT || '3000'));
 console.log('============================================================');
