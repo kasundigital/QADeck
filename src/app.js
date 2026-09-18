@@ -52,7 +52,7 @@ app.get('/health',(req,res)=>res.json({status:'ok',app:'QADeck',version:'0.6.0',
 app.post('/hooks/projects/:id/run/:token',(req,res)=>{
   const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project||!project.trigger_token||!safeEqual(req.params.token,project.trigger_token))return res.status(404).json({error:'Not found'});
   if(req.body?.agent===true||req.body?.run_type==='agent'){
-    const config=db.prepare('SELECT repository FROM agent_configs WHERE project_id=?').get(project.id);
+    const config=db.prepare('SELECT repository,branch FROM agent_configs WHERE project_id=?').get(project.id);
     if(!config?.repository)return res.status(400).json({error:'GitHub Agent is not configured for this project'});
     const active=db.prepare("SELECT id FROM agent_runs WHERE project_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(project.id);
     if(active)return res.status(200).json({agent_run_id:active.id,status:'already_active',run_type:'agent'});
