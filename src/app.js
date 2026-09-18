@@ -48,9 +48,17 @@ function saveScenarioSteps(scenarioId,steps){db.transaction(()=>{db.prepare('DEL
 function artifactAbsolute(webPath){if(!webPath||!String(webPath).startsWith('/artifacts/'))return null;const relative=String(webPath).slice('/artifacts/'.length),resolved=path.resolve(artifactRoot,relative);if(resolved!==artifactRoot&&!resolved.startsWith(`${artifactRoot}${path.sep}`))return null;return resolved;}
 function queueRun(projectId,runType='crawl',scenarioId=null){const active=db.prepare("SELECT id FROM test_runs WHERE project_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(projectId);if(active)return {id:active.id,existing:true};const result=db.prepare('INSERT INTO test_runs (project_id,status,queued_at,run_type,scenario_id) VALUES (?,\'queued\',CURRENT_TIMESTAMP,?,?)').run(projectId,runType,scenarioId);return{id:Number(result.lastInsertRowid),existing:false};}
 
-app.get('/health',(req,res)=>res.json({status:'ok',app:'QADeck',version:'0.5.0',mode:'web'}));
+app.get('/health',(req,res)=>res.json({status:'ok',app:'QADeck',version:'0.6.0',mode:'web'}));
 app.post('/hooks/projects/:id/run/:token',(req,res)=>{
   const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project||!project.trigger_token||!safeEqual(req.params.token,project.trigger_token))return res.status(404).json({error:'Not found'});
+  if(req.body?.agent===true||req.body?.run_type==='agent'){
+    const config=db.prepare('SELECT repository FROM agent_configs WHERE project_id=?').get(project.id);
+    if(!config?.repository)return res.status(400).json({error:'GitHub Agent is not configured for this project'});
+    const active=db.prepare("SELECT id FROM agent_runs WHERE project_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(project.id);
+    if(active)return res.status(200).json({agent_run_id:active.id,status:'already_active',run_type:'agent'});
+    const agent=db.prepare("INSERT INTO agent_runs (project_id,status,trigger_type,ref,commit_sha,pr_number) VALUES (?,'queued','ci',?,?,?)").run(project.id,String(req.body?.ref||config.branch||'').trim()||null,String(req.body?.commit_sha||'').trim()||null,req.body?.pr_number?Number(req.body.pr_number):null);
+    return res.status(202).json({agent_run_id:Number(agent.lastInsertRowid),status:'queued',run_type:'agent'});
+  }
   let scenarioId=null,runType='crawl';if(req.body?.scenario_id){const s=db.prepare('SELECT id FROM test_scenarios WHERE id=? AND project_id=?').get(req.body.scenario_id,project.id);if(!s)return res.status(400).json({error:'Invalid scenario_id'});scenarioId=s.id;runType='scenario';}
   const run=queueRun(project.id,runType,scenarioId);return res.status(run.existing?200:202).json({run_id:run.id,status:run.existing?'already_active':'queued',run_type:runType});
 });
