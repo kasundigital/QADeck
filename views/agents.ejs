@@ -2,6 +2,7 @@
 <link rel="stylesheet" href="/static/agents.css">
 <div class="page-head">
   <div><span class="eyebrow">QADECK AGENTS</span><h1>Software QA Agents</h1><p>Connect project source code and let QADeck review code, security patterns and missing tests in the background.</p></div>
+  <% if (projects.length) { %><div class="head-actions"><a class="btn primary" href="#agent-projects">⚙ Configure Agent</a></div><% } %>
 </div>
 
 <div class="stats-grid">
@@ -11,14 +12,14 @@
   <div class="stat-card"><span>Running now</span><strong><%=totals.running%></strong></div>
 </div>
 
-<div class="section-head"><div><h2>Projects</h2><p>Each QADeck project can connect to one GitHub repository.</p></div></div>
+<div id="agent-projects" class="section-head"><div><h2>Projects</h2><p>Each QADeck project can connect to one GitHub repository.</p></div></div>
 <div class="agent-project-grid">
 <% projects.forEach(p=>{ %>
   <article class="agent-project-card">
     <div class="agent-project-top"><div><span class="eyebrow">PROJECT</span><h3><%=p.name%></h3><p><%=p.repository||'GitHub repository not configured'%></p></div><span class="status-pill <%=p.last_agent_status||'idle'%>"><%=p.last_agent_status||'Not run'%></span></div>
     <div class="agent-metrics"><span><strong><%=p.last_findings??'—'%></strong> findings</span><span><strong><%=p.last_agent_completed?formatDate(p.last_agent_completed):'Never'%></strong> last review</span></div>
     <div class="card-actions">
-      <a class="btn primary" href="/projects/<%=p.id%>/agent"><%=p.repository?'Open Agent':'Configure Agent'%></a>
+      <a class="btn primary" href="/projects/<%=p.id%>/agent"><%=p.repository?'Open Agent Settings':'⚙ Configure Agent'%></a>
       <% if(p.last_agent_run_id){ %><a class="btn secondary" href="/agent-runs/<%=p.last_agent_run_id%>">Latest report</a><% } %>
     </div>
   </article>
