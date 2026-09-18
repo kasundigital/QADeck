@@ -11,6 +11,7 @@ function ensureAgentSchema() {
       enable_code_review INTEGER NOT NULL DEFAULT 1,
       enable_security INTEGER NOT NULL DEFAULT 1,
       enable_test_suggestions INTEGER NOT NULL DEFAULT 1,
+      enable_auto_tests INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
     );
@@ -67,6 +68,10 @@ function ensureAgentSchema() {
     CREATE INDEX IF NOT EXISTS idx_agent_findings_run ON agent_findings(agent_run_id, id);
     CREATE INDEX IF NOT EXISTS idx_agent_suggestions_run ON agent_test_suggestions(agent_run_id, id);
   `);
+  const configColumns = db.prepare('PRAGMA table_info(agent_configs)').all();
+  if (!configColumns.some((column) => column.name === 'enable_auto_tests')) {
+    db.exec('ALTER TABLE agent_configs ADD COLUMN enable_auto_tests INTEGER NOT NULL DEFAULT 1');
+  }
 }
 
 ensureAgentSchema();
@@ -264,6 +269,15 @@ function scanFile(file, findings, config) {
     let match;
     let count = 0;
     while ((match = rule.re.exec(c)) && count < 4) {
+      if (rule.title === 'Possible SQL injection') {
+        const before = c.slice(Math.max(0, match.index - 500), match.index + match[0].length);
+        const prepared = /prepare\s*\([^)]*(?:\?|:[A-Za-z_][A-Za-z0-9_]*)/is.test(before);
+        const directConcat = /(?:query|exec)\s*\([^)]*(?:\$_(?:GET|POST|REQUEST)|req\.(?:query|body|params))/is.test(match[0]);
+        if (prepared && !directConcat) {
+          if (rule.re.lastIndex === match.index) rule.re.lastIndex += 1;
+          continue;
+        }
+      }
       addFinding(findings, file, rule.sev, rule.cat, rule.title, match[0].slice(0, 500), rule.rec, match.index);
       count += 1;
       if (rule.re.lastIndex === match.index) rule.re.lastIndex += 1;
@@ -423,6 +437,13 @@ async function processNextAgentJob(workerId) {
           files_scanned=?,findings_count=?,suggestions_count=?,summary=?,error_message=NULL
       WHERE id=?
     `).run(repo.files.length, findings.length, suggestions.length, summary, run.id);
+
+    if (Number(run.config.enable_auto_tests ?? 1)) {
+      const existing = db.prepare("SELECT id FROM test_runs WHERE project_id=? AND agent_run_id=? AND status IN ('queued','running','completed') ORDER BY id DESC LIMIT 1").get(run.project_id, run.id);
+      if (!existing) {
+        db.prepare("INSERT INTO test_runs (project_id,status,queued_at,run_type,agent_run_id) VALUES (?,'queued',CURRENT_TIMESTAMP,'auto',?)").run(run.project_id, run.id);
+      }
+    }
   } catch (error) {
     db.prepare("UPDATE agent_runs SET status='failed',completed_at=CURRENT_TIMESTAMP,heartbeat_at=NULL,worker_id=NULL,error_message=? WHERE id=?")
       .run(String(error.message || error).slice(0,4000), run.id);
