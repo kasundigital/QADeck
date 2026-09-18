@@ -18,7 +18,8 @@ try {
 }
 
 const generated = {};
-function useValue(name, fallbackFactory) {
+function useValue(name, fallbackFactory, preferSaved = false) {
+  if (preferSaved && saved[name]) return String(saved[name]);
   const envValue = process.env[name];
   if (envValue) return envValue;
   if (saved[name]) return String(saved[name]);
@@ -27,8 +28,8 @@ function useValue(name, fallbackFactory) {
   return value;
 }
 
-process.env.QADECK_ADMIN_EMAIL = useValue('QADECK_ADMIN_EMAIL', () => 'admin@qadeck.local');
-process.env.QADECK_ADMIN_PASSWORD = useValue('QADECK_ADMIN_PASSWORD', () => crypto.randomBytes(15).toString('base64url'));
+process.env.QADECK_ADMIN_EMAIL = useValue('QADECK_ADMIN_EMAIL', () => 'admin@qadeck.local', true);
+process.env.QADECK_ADMIN_PASSWORD = useValue('QADECK_ADMIN_PASSWORD', () => crypto.randomBytes(15).toString('base64url'), true);
 process.env.SESSION_SECRET = useValue('SESSION_SECRET', () => crypto.randomBytes(32).toString('hex'));
 process.env.CREDENTIALS_KEY = useValue('CREDENTIALS_KEY', () => crypto.randomBytes(32).toString('hex'));
 
