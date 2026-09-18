@@ -1,6 +1,6 @@
 const db = require('./db');
 const { encrypt } = require('./crypto');
-const { ensureAgentSchema, normalizeRepository } = require('./agent-service');
+const { ensureAgentSchema, normalizeRepository, createGithubIssueFromRun } = require('./agent-service');
 
 ensureAgentSchema();
 
@@ -131,6 +131,16 @@ function installAgentRoutes(app) {
     const findings = db.prepare('SELECT severity,category,file_path,line_number,title,details,recommendation FROM agent_findings WHERE agent_run_id=? ORDER BY id').all(run.id);
     const suggestions = db.prepare('SELECT title,test_type,priority,rationale,steps_json FROM agent_test_suggestions WHERE agent_run_id=? ORDER BY id').all(run.id);
     res.json({run,findings,suggestions});
+  });
+
+  app.post('/agent-runs/:id/github-issue', async (req, res) => {
+    try {
+      const issue = await createGithubIssueFromRun(Number(req.params.id));
+      if (issue && issue.html_url) return res.redirect(issue.html_url);
+      return res.redirect('/agent-runs/' + req.params.id);
+    } catch (error) {
+      return res.status(400).send('Could not create GitHub issue: ' + (error.message || String(error)));
+    }
   });
 
   app.post('/agent-runs/:id/delete', (req, res) => {
