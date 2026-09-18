@@ -35,7 +35,8 @@ function newTriggerToken(){return crypto.randomBytes(24).toString('base64url');}
 function validEmail(value){return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);}
 function readRuntimeConfig(){try{return fs.existsSync(runtimeConfigPath)?JSON.parse(fs.readFileSync(runtimeConfigPath,'utf8')):{};}catch(error){console.warn('[QADeck] Could not read runtime config:',error.message);return{};}}
 function writeRuntimeConfig(patch){const current=readRuntimeConfig();const next={...current,...patch};fs.mkdirSync(dataDir,{recursive:true});fs.writeFileSync(runtimeConfigPath,JSON.stringify(next,null,2),{mode:0o600});try{fs.chmodSync(runtimeConfigPath,0o600);}catch{}return next;}
-function getAdminCredentials(){const saved=readRuntimeConfig();return{email:String(saved.QADECK_ADMIN_EMAIL||process.env.QADECK_ADMIN_EMAIL||'admin@qadeck.local'),password:String(saved.QADECK_ADMIN_PASSWORD||process.env.QADECK_ADMIN_PASSWORD||'change-this-password')};}
+function getAdminCredentials(){const saved=readRuntimeConfig();const username=String(saved.QADECK_ADMIN_USERNAME||saved.QADECK_ADMIN_EMAIL||process.env.QADECK_ADMIN_USERNAME||process.env.QADECK_ADMIN_EMAIL||'').trim();const password=String(saved.QADECK_ADMIN_PASSWORD||process.env.QADECK_ADMIN_PASSWORD||'');const configured=Boolean(username&&password&&password!=='change-this-password');return{username,password,configured};}
+function setupComplete(){return getAdminCredentials().configured;}
 
 function parseExtraLoginFields(body,prefix='extra_'){
   const names=asArray(body[`${prefix}field_name`]),values=asArray(body[`${prefix}field_value`]),selectors=asArray(body[`${prefix}field_selector`]),types=asArray(body[`${prefix}field_type`]);
@@ -67,34 +68,70 @@ app.post('/hooks/projects/:id/run/:token',(req,res)=>{
   const run=queueRun(project.id,runType,scenarioId);return res.status(run.existing?200:202).json({run_id:run.id,status:run.existing?'already_active':'queued',run_type:runType});
 });
 
-app.get('/login',(req,res)=>req.session?.authenticated?res.redirect('/'):res.render('login',{error:null}));
-app.post('/login',(req,res)=>{const {email,password}=getAdminCredentials();if(safeEqual(req.body.email,email)&&safeEqual(req.body.password,password)){req.session.authenticated=true;req.session.email=email;return res.redirect('/');}return res.status(401).render('login',{error:'Invalid email or password.'});});
+app.get('/setup',(req,res)=>{
+  if(setupComplete())return res.redirect(req.session?.authenticated?'/':'/login');
+  return res.render('setup',{error:null,username:''});
+});
+app.post('/setup',(req,res)=>{
+  if(setupComplete())return res.redirect('/login');
+  const username=String(req.body.username||'').trim();
+  const password=String(req.body.password||'');
+  const confirm=String(req.body.confirm_password||'');
+  const fail=(message)=>res.status(400).render('setup',{error:message,username});
+  if(username.length<3)return fail('Username must be at least 3 characters.');
+  if(username.length>80)return fail('Username is too long.');
+  if(password.length<10)return fail('Password must be at least 10 characters.');
+  if(password!==confirm)return fail('Password and confirmation do not match.');
+  try{
+    writeRuntimeConfig({QADECK_ADMIN_USERNAME:username,QADECK_ADMIN_PASSWORD:password});
+    process.env.QADECK_ADMIN_USERNAME=username;
+    process.env.QADECK_ADMIN_PASSWORD=password;
+    req.session.authenticated=true;
+    req.session.email=username;
+    return req.session.save(()=>res.redirect('/'));
+  }catch(error){
+    console.error('[QADeck] First-run setup failed:',error);
+    return res.status(500).render('setup',{error:'Could not save QADeck setup. Check the data volume permissions.',username});
+  }
+});
+app.get('/login',(req,res)=>{
+  if(!setupComplete())return res.redirect('/setup');
+  return req.session?.authenticated?res.redirect('/'):res.render('login',{error:null});
+});
+app.post('/login',(req,res)=>{
+  if(!setupComplete())return res.redirect('/setup');
+  const {username,password}=getAdminCredentials();
+  const submitted=String(req.body.username||req.body.email||'').trim();
+  if(safeEqual(submitted,username)&&safeEqual(req.body.password,password)){req.session.authenticated=true;req.session.email=username;return res.redirect('/');}
+  return res.status(401).render('login',{error:'Invalid username or password.'});
+});
 app.post('/logout',requireAuth,(req,res)=>req.session.destroy(()=>res.redirect('/login')));
 app.use(requireAuth);
 app.use('/artifacts',express.static(artifactRoot));
 
-app.get('/account',(req,res)=>{const {email}=getAdminCredentials();res.render('account',{email:req.session.email||email,adminEmail:email,error:null,success:req.query.updated==='1'?'Admin login updated successfully.':null});});
+app.get('/account',(req,res)=>{const {username}=getAdminCredentials();res.render('account',{email:req.session.email||username,adminUsername:username,error:null,success:req.query.updated==='1'?'Admin login updated successfully.':null});});
 app.post('/account',(req,res)=>{
   const current=getAdminCredentials();
-  const adminEmail=String(req.body.email||'').trim();
+  const adminUsername=String(req.body.username||'').trim();
   const currentPassword=String(req.body.current_password||'');
   const newPassword=String(req.body.new_password||'');
   const confirmPassword=String(req.body.confirm_password||'');
-  const renderError=(message)=>res.status(400).render('account',{email:req.session.email||current.email,adminEmail,error:message,success:null});
-  if(!adminEmail||!validEmail(adminEmail))return renderError('Enter a valid admin email address.');
+  const renderError=(message)=>res.status(400).render('account',{email:req.session.email||current.username,adminUsername,error:message,success:null});
+  if(adminUsername.length<3)return renderError('Username must be at least 3 characters.');
+  if(adminUsername.length>80)return renderError('Username is too long.');
   if(!safeEqual(currentPassword,current.password))return renderError('Current password is incorrect.');
   if(newPassword&&newPassword.length<10)return renderError('New password must be at least 10 characters.');
   if(newPassword!==confirmPassword)return renderError('New password and confirmation do not match.');
   const nextPassword=newPassword||current.password;
   try{
-    writeRuntimeConfig({QADECK_ADMIN_EMAIL:adminEmail,QADECK_ADMIN_PASSWORD:nextPassword});
-    process.env.QADECK_ADMIN_EMAIL=adminEmail;
+    writeRuntimeConfig({QADECK_ADMIN_USERNAME:adminUsername,QADECK_ADMIN_PASSWORD:nextPassword});
+    process.env.QADECK_ADMIN_USERNAME=adminUsername;
     process.env.QADECK_ADMIN_PASSWORD=nextPassword;
-    req.session.email=adminEmail;
+    req.session.email=adminUsername;
     return req.session.save(()=>res.redirect('/account?updated=1'));
   }catch(error){
     console.error('[QADeck] Could not update admin login:',error);
-    return res.status(500).render('account',{email:req.session.email||current.email,adminEmail:current.email,error:'Could not save the new login settings.',success:null});
+    return res.status(500).render('account',{email:req.session.email||current.username,adminUsername:current.username,error:'Could not save the new login settings.',success:null});
   }
 });
 
