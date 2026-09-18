@@ -204,7 +204,7 @@ jobs:
 
           WEB_OK=0
           for i in $(seq 1 45); do
-            if curl -fsS http://127.0.0.1:3010/health >/dev/null; then
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then
               WEB_OK=1
               break
             fi
