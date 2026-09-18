@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const db = require('./db');
 const { runProject } = require('./runner');
 const { runScenario } = require('./scenario-runner');
+const { runAutoSuite } = require('./auto-runner');
 const { notifyRun } = require('./notifier');
 const { summarizeRun } = require('./ai');
 const { processNextAgentJob, recoverStaleAgentRuns } = require('./agent-service');
@@ -123,6 +124,7 @@ async function loop() {
     console.log(`[QADeck worker] Running ${job.runType} job #${job.runId} for ${job.project.name}.`);
     try {
       if (job.runType === 'scenario') await runScenario(job.runId, job.project, job.scenarioId, { workerId });
+      else if (job.runType === 'auto') await runAutoSuite(job.runId, job.project, { workerId });
       else await runProject(job.runId, job.project, { workerId });
     } catch (error) {
       console.error(`[QADeck worker] Run #${job.runId} crashed:`, error);
