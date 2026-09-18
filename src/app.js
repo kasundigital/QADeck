@@ -11,6 +11,7 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'));
 const artifactRoot = path.join(dataDir, 'artifacts');
+const runtimeConfigPath = path.join(dataDir, 'runtime-config.json');
 const VIEWPORT_OPTIONS = ['desktop','laptop','tablet','mobile','small-mobile'];
 const SCENARIO_ACTIONS = ['visit','click','fill','select','check','uncheck','expect_text','expect_url','wait','screenshot','api_get','api_post','expect_status','expect_json'];
 const SCHEDULE_INTERVALS = [15,30,60,360,720,1440,10080];
@@ -32,6 +33,9 @@ function featureValue(body,name){return body[name]==='1'?1:0;}
 function parseScheduleInterval(body){const v=Number(body.schedule_interval_minutes||1440);return SCHEDULE_INTERVALS.includes(v)?v:1440;}
 function newTriggerToken(){return crypto.randomBytes(24).toString('base64url');}
 function validEmail(value){return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);}
+function readRuntimeConfig(){try{return fs.existsSync(runtimeConfigPath)?JSON.parse(fs.readFileSync(runtimeConfigPath,'utf8')):{};}catch(error){console.warn('[QADeck] Could not read runtime config:',error.message);return{};}}
+function writeRuntimeConfig(patch){const current=readRuntimeConfig();const next={...current,...patch};fs.mkdirSync(dataDir,{recursive:true});fs.writeFileSync(runtimeConfigPath,JSON.stringify(next,null,2),{mode:0o600});try{fs.chmodSync(runtimeConfigPath,0o600);}catch{}return next;}
+function getAdminCredentials(){const saved=readRuntimeConfig();return{email:String(saved.QADECK_ADMIN_EMAIL||process.env.QADECK_ADMIN_EMAIL||'admin@qadeck.local'),password:String(saved.QADECK_ADMIN_PASSWORD||process.env.QADECK_ADMIN_PASSWORD||'change-this-password')};}
 
 function parseExtraLoginFields(body,prefix='extra_'){
   const names=asArray(body[`${prefix}field_name`]),values=asArray(body[`${prefix}field_value`]),selectors=asArray(body[`${prefix}field_selector`]),types=asArray(body[`${prefix}field_type`]);
@@ -48,7 +52,7 @@ function saveScenarioSteps(scenarioId,steps){db.transaction(()=>{db.prepare('DEL
 function artifactAbsolute(webPath){if(!webPath||!String(webPath).startsWith('/artifacts/'))return null;const relative=String(webPath).slice('/artifacts/'.length),resolved=path.resolve(artifactRoot,relative);if(resolved!==artifactRoot&&!resolved.startsWith(`${artifactRoot}${path.sep}`))return null;return resolved;}
 function queueRun(projectId,runType='crawl',scenarioId=null){const active=db.prepare("SELECT id FROM test_runs WHERE project_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(projectId);if(active)return {id:active.id,existing:true};const result=db.prepare('INSERT INTO test_runs (project_id,status,queued_at,run_type,scenario_id) VALUES (?,\'queued\',CURRENT_TIMESTAMP,?,?)').run(projectId,runType,scenarioId);return{id:Number(result.lastInsertRowid),existing:false};}
 
-app.get('/health',(req,res)=>res.json({status:'ok',app:'QADeck',version:'0.6.0',mode:'web'}));
+app.get('/health',(req,res)=>res.json({status:'ok',app:'QADeck',version:'0.6.2',mode:'web'}));
 app.post('/hooks/projects/:id/run/:token',(req,res)=>{
   const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project||!project.trigger_token||!safeEqual(req.params.token,project.trigger_token))return res.status(404).json({error:'Not found'});
   if(req.body?.agent===true||req.body?.run_type==='agent'){
@@ -64,10 +68,35 @@ app.post('/hooks/projects/:id/run/:token',(req,res)=>{
 });
 
 app.get('/login',(req,res)=>req.session?.authenticated?res.redirect('/'):res.render('login',{error:null}));
-app.post('/login',(req,res)=>{const email=process.env.QADECK_ADMIN_EMAIL||'admin@example.com',password=process.env.QADECK_ADMIN_PASSWORD||'change-this-password';if(safeEqual(req.body.email,email)&&safeEqual(req.body.password,password)){req.session.authenticated=true;req.session.email=email;return res.redirect('/');}return res.status(401).render('login',{error:'Invalid email or password.'});});
+app.post('/login',(req,res)=>{const {email,password}=getAdminCredentials();if(safeEqual(req.body.email,email)&&safeEqual(req.body.password,password)){req.session.authenticated=true;req.session.email=email;return res.redirect('/');}return res.status(401).render('login',{error:'Invalid email or password.'});});
 app.post('/logout',requireAuth,(req,res)=>req.session.destroy(()=>res.redirect('/login')));
 app.use(requireAuth);
 app.use('/artifacts',express.static(artifactRoot));
+
+app.get('/account',(req,res)=>{const {email}=getAdminCredentials();res.render('account',{email:req.session.email||email,adminEmail:email,error:null,success:req.query.updated==='1'?'Admin login updated successfully.':null});});
+app.post('/account',(req,res)=>{
+  const current=getAdminCredentials();
+  const adminEmail=String(req.body.email||'').trim();
+  const currentPassword=String(req.body.current_password||'');
+  const newPassword=String(req.body.new_password||'');
+  const confirmPassword=String(req.body.confirm_password||'');
+  const renderError=(message)=>res.status(400).render('account',{email:req.session.email||current.email,adminEmail,error:message,success:null});
+  if(!adminEmail||!validEmail(adminEmail))return renderError('Enter a valid admin email address.');
+  if(!safeEqual(currentPassword,current.password))return renderError('Current password is incorrect.');
+  if(newPassword&&newPassword.length<10)return renderError('New password must be at least 10 characters.');
+  if(newPassword!==confirmPassword)return renderError('New password and confirmation do not match.');
+  const nextPassword=newPassword||current.password;
+  try{
+    writeRuntimeConfig({QADECK_ADMIN_EMAIL:adminEmail,QADECK_ADMIN_PASSWORD:nextPassword});
+    process.env.QADECK_ADMIN_EMAIL=adminEmail;
+    process.env.QADECK_ADMIN_PASSWORD=nextPassword;
+    req.session.email=adminEmail;
+    return req.session.save(()=>res.redirect('/account?updated=1'));
+  }catch(error){
+    console.error('[QADeck] Could not update admin login:',error);
+    return res.status(500).render('account',{email:req.session.email||current.email,adminEmail:current.email,error:'Could not save the new login settings.',success:null});
+  }
+});
 
 app.get('/',(req,res)=>{
   const projects=db.prepare(`SELECT p.*,(SELECT id FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_run_id,(SELECT status FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_status,(SELECT pages_scanned FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_pages,(SELECT issues_count FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_issues,(SELECT completed_at FROM test_runs r WHERE r.project_id=p.id ORDER BY r.id DESC LIMIT 1) last_completed FROM projects p ORDER BY p.id DESC`).all();
