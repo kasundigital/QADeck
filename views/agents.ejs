@@ -1,0 +1,28 @@
+<%- include('partials/header', { title: 'Agents', email }) %>
+<link rel="stylesheet" href="/static/agents.css">
+<div class="page-head">
+  <div><span class="eyebrow">QADECK AGENTS</span><h1>Software QA Agents</h1><p>Connect project source code and let QADeck review code, security patterns and missing tests in the background.</p></div>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card"><span>Configured repos</span><strong><%=totals.configured%></strong></div>
+  <div class="stat-card"><span>Agent runs</span><strong><%=totals.runs%></strong></div>
+  <div class="stat-card"><span>Findings</span><strong><%=totals.findings%></strong></div>
+  <div class="stat-card"><span>Running now</span><strong><%=totals.running%></strong></div>
+</div>
+
+<div class="section-head"><div><h2>Projects</h2><p>Each QADeck project can connect to one GitHub repository.</p></div></div>
+<div class="agent-project-grid">
+<% projects.forEach(p=>{ %>
+  <article class="agent-project-card">
+    <div class="agent-project-top"><div><span class="eyebrow">PROJECT</span><h3><%=p.name%></h3><p><%=p.repository||'GitHub repository not configured'%></p></div><span class="status-pill <%=p.last_agent_status||'idle'%>"><%=p.last_agent_status||'Not run'%></span></div>
+    <div class="agent-metrics"><span><strong><%=p.last_findings??'—'%></strong> findings</span><span><strong><%=p.last_agent_completed?formatDate(p.last_agent_completed):'Never'%></strong> last review</span></div>
+    <div class="card-actions">
+      <a class="btn primary" href="/projects/<%=p.id%>/agent"><%=p.repository?'Open Agent':'Configure Agent'%></a>
+      <% if(p.last_agent_run_id){ %><a class="btn secondary" href="/agent-runs/<%=p.last_agent_run_id%>">Latest report</a><% } %>
+    </div>
+  </article>
+<% }) %>
+</div>
+<% if(!projects.length){ %><div class="empty-state"><h2>No projects yet</h2><p>Add a QADeck project first, then connect its GitHub repository here.</p><a class="btn primary" href="/projects/new">Add Project</a></div><% } %>
+<%- include('partials/footer') %>
