@@ -57,6 +57,27 @@ jobs:
           exit 1
 
 
+      - name: First-run setup wizard smoke test
+        env:
+          DATA_DIR: /tmp/qadeck-ci-first-run
+          SESSION_SECRET: ci-session-secret
+          CREDENTIALS_KEY: ci-only-test-key
+        run: |
+          rm -rf "$DATA_DIR"
+          npm start >/tmp/qadeck-first-run.log 2>&1 &
+          APP_PID=$!
+          trap 'kill $APP_PID || true' EXIT
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:3000/setup | grep -q "Welcome to QADeck"; then
+              LOGIN_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/login)
+              test "$LOGIN_CODE" = "302"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/qadeck-first-run.log
+          exit 1
+
       - name: All-in-one runtime smoke test
         env:
           DATA_DIR: /tmp/qadeck-ci-allinone
