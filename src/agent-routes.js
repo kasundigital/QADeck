@@ -5,8 +5,9 @@ const { ensureAgentSchema, normalizeRepository } = require('./agent-service');
 ensureAgentSchema();
 
 function parseToggle(body, name, fallback = 1) {
-  if (Object.prototype.hasOwnProperty.call(body || {}, name)) return body[name] === '1' ? 1 : 0;
-  return fallback;
+  if (!Object.prototype.hasOwnProperty.call(body || {}, name)) return fallback;
+  const value = Array.isArray(body[name]) ? body[name][body[name].length - 1] : body[name];
+  return String(value) === '1' ? 1 : 0;
 }
 
 function configFor(projectId) {
