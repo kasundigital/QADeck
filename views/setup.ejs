@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Set up QADeck</title>
+  <link rel="icon" type="image/svg+xml" href="/static/brand/qadeck-icon.svg">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/brand.css">
+</head>
+<body class="login-page brand-login setup-page">
+  <section class="login-showcase" aria-hidden="true">
+    <div class="showcase-copy">
+      <span class="showcase-kicker">First-run setup</span>
+      <h1>Your QA workspace.<span>Your credentials.</span></h1>
+      <p>QADeck is self-hosted. Create the administrator account for this installation before adding your first application.</p>
+      <div class="showcase-features">
+        <div class="showcase-feature"><strong>No default password</strong><span>You choose the administrator login during first setup.</span></div>
+        <div class="showcase-feature"><strong>Persistent</strong><span>Your account stays in the QADeck data volume across upgrades.</span></div>
+        <div class="showcase-feature"><strong>Encrypted test credentials</strong><span>Target-site passwords are protected with the installation key.</span></div>
+        <div class="showcase-feature"><strong>Private by design</strong><span>Your projects and QA evidence remain on your server.</span></div>
+      </div>
+    </div>
+    <div class="showcase-orbit"><span>1</span><span>✓</span><span>Q</span></div>
+  </section>
+
+  <section class="login-panel">
+    <div class="login-shell">
+      <img class="login-logo" src="/static/brand/qadeck-logo.svg" alt="QADeck">
+      <div class="login-card brand-card setup-card">
+        <div class="setup-step">FIRST RUN · ADMIN ACCOUNT</div>
+        <h2>Welcome to QADeck</h2>
+        <p class="muted">Create the login for this QADeck installation.</p>
+        <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
+
+        <form method="post" action="/setup" class="stack-form">
+          <label>Admin username
+            <div class="input-wrap">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c.8-4 3.1-6 7-6s6.2 2 7 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <input type="text" name="username" value="<%= username || '' %>" required autofocus autocomplete="username" minlength="3" maxlength="80" placeholder="Choose an admin username">
+            </div>
+          </label>
+
+          <label>Password
+            <div class="input-wrap">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <input id="setup-password" type="password" name="password" required autocomplete="new-password" minlength="10" placeholder="Minimum 10 characters">
+              <button class="password-toggle" type="button" data-toggle-password="setup-password" aria-label="Show password">◉</button>
+            </div>
+          </label>
+
+          <label>Confirm password
+            <div class="input-wrap">
+              <svg class="input-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 2.6 8 7 10 4.4-2 7-5.4 7-10V6l-7-3Z" stroke="currentColor" stroke-width="1.8"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <input id="setup-confirm" type="password" name="confirm_password" required autocomplete="new-password" minlength="10" placeholder="Repeat your password">
+              <button class="password-toggle" type="button" data-toggle-password="setup-confirm" aria-label="Show password">◉</button>
+            </div>
+          </label>
+
+          <button class="btn primary full" type="submit">Create admin & enter QADeck →</button>
+        </form>
+
+        <div class="login-security"><span>◇</span><span><strong>One-time setup</strong> · This screen is disabled after the account is created.</span></div>
+      </div>
+      <div class="login-footnote">QADeck · <span>Self-hosted Web QA Console</span></div>
+    </div>
+  </section>
+<script>
+document.querySelectorAll('[data-toggle-password]').forEach((button)=>{
+  button.addEventListener('click',()=>{
+    const input=document.getElementById(button.dataset.togglePassword);
+    const showing=input.type==='text';
+    input.type=showing?'password':'text';
+    button.textContent=showing?'◉':'◎';
+    button.setAttribute('aria-label',showing?'Show password':'Hide password');
+  });
+});
+</script>
+</body>
+</html>
