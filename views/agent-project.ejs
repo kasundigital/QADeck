@@ -1,7 +1,7 @@
 <%- include('partials/header', { title: project.name + ' Agent', email: '' }) %>
 <link rel="stylesheet" href="/static/agents.css">
 <div class="page-head">
-  <div><span class="eyebrow">SOFTWARE QA AGENT</span><h1><%=project.name%></h1><p>Background source review for code quality, security patterns and test coverage suggestions.</p></div>
+  <div><span class="eyebrow">SOFTWARE QA AGENT</span><h1><%=project.name%></h1><p>Source review plus automatic browser QA execution. Configure once, then QADeck reviews and tests the application in the background.</p></div>
   <div class="head-actions"><a class="btn secondary" href="/projects/<%=project.id%>">← Project</a><%if(config.repository){%><form method="post" action="/projects/<%=project.id%>/agent/run"><button class="btn primary" type="submit">▶ Run Agent</button></form><%}%></div>
 </div>
 
@@ -21,6 +21,7 @@
       <label class="toggle-row"><input type="hidden" name="enable_code_review" value="0"><input type="checkbox" name="enable_code_review" value="1" <%=Number(config.enable_code_review??1)?'checked':''%>><span><strong>Code review</strong><small>Review source/config files for risky and maintainability patterns.</small></span></label>
       <label class="toggle-row"><input type="hidden" name="enable_security" value="0"><input type="checkbox" name="enable_security" value="1" <%=Number(config.enable_security??1)?'checked':''%>><span><strong>Security review</strong><small>Look for exposed secrets, injection paths, unsafe execution and container issues.</small></span></label>
       <label class="toggle-row"><input type="hidden" name="enable_test_suggestions" value="0"><input type="checkbox" name="enable_test_suggestions" value="1" <%=Number(config.enable_test_suggestions??1)?'checked':''%>><span><strong>Automatic test suggestions</strong><small>Suggest browser/API/security tests based on detected application features.</small></span></label>
+      <label class="toggle-row"><input type="hidden" name="enable_auto_tests" value="0"><input type="checkbox" name="enable_auto_tests" value="1" <%=Number(config.enable_auto_tests??1)?'checked':''%>><span><strong>Fully automated QA execution</strong><small>After every Agent review, automatically run login, invalid-login, logout/session, role-login, responsive, keyboard, accessibility and safe validation checks.</small></span></label>
 
       <div class="form-actions"><button class="btn primary" type="submit">Save Agent settings</button></div>
     </form>
