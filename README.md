@@ -133,6 +133,8 @@ Browser / CI / Scheduler
 
 ## One-command Docker install
 
+> **Maintainer note:** the first GHCR publish may create the `qadeck` container package as private. In GitHub, open **Profile → Packages → qadeck → Package settings → Change visibility → Public** once. Public GHCR images can then be pulled anonymously with the command below.
+
 No Git clone and no Docker Compose are required for the normal single-server install.
 
 ```bash
