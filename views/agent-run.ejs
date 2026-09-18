@@ -2,7 +2,7 @@
 <link rel="stylesheet" href="/static/agents.css">
 <div class="page-head">
   <div><span class="eyebrow">AGENT REPORT</span><h1><%=run.project_name%> · Agent #<%=run.id%></h1><p><%=run.repository||'Repository'%> · <%=run.ref||'default branch'%><%if(run.commit_sha){%> · <code><%=run.commit_sha.slice(0,12)%></code><%}%></p></div>
-  <div class="head-actions"><a class="btn secondary" href="/projects/<%=run.project_id%>/agent">← Agent</a><a class="btn secondary" href="/api/agent-runs/<%=run.id%>" target="_blank">JSON</a></div>
+  <div class="head-actions"><a class="btn secondary" href="/projects/<%=run.project_id%>/agent">← Agent</a><a class="btn secondary" href="/api/agent-runs/<%=run.id%>" target="_blank">JSON</a><% if (run.status === "completed") { %><form method="post" action="/agent-runs/<%=run.id%>/github-issue"><button class="btn secondary" type="submit">Create GitHub Issue</button></form><% } %></div>
 </div>
 
 <%if(run.status==='queued'||run.status==='running'){%><div class="running-banner"><span class="spinner"></span><div><strong>Agent analysis is <%=run.status%> in the background…</strong><p>You can close QADeck. The worker continues independently.</p></div></div><script>setTimeout(()=>location.reload(),2500)</script><%}%>
