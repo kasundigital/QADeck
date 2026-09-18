@@ -12,14 +12,14 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
@@ -40,6 +40,7 @@ jobs:
 
       - name: Web health smoke test
         env:
+          PORT: 3010
           DATA_DIR: /tmp/qadeck-ci-web
           CREDENTIALS_KEY: ci-only-test-key
           SESSION_SECRET: ci-session-secret
@@ -50,7 +51,7 @@ jobs:
           APP_PID=$!
           trap 'kill $APP_PID || true' EXIT
           for i in {1..20}; do
-            if curl -fsS http://127.0.0.1:3000/health; then exit 0; fi
+            if curl -fsS http://127.0.0.1:3010/health; then exit 0; fi
             sleep 1
           done
           cat /tmp/qadeck-web.log
@@ -59,6 +60,7 @@ jobs:
 
       - name: First-run setup wizard smoke test
         env:
+          PORT: 3011
           DATA_DIR: /tmp/qadeck-ci-first-run
           SESSION_SECRET: ci-session-secret
           CREDENTIALS_KEY: ci-only-test-key
@@ -68,8 +70,8 @@ jobs:
           APP_PID=$!
           trap 'kill $APP_PID || true' EXIT
           for i in {1..20}; do
-            if curl -fsS http://127.0.0.1:3000/setup | grep -q "Welcome to QADeck"; then
-              LOGIN_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/login)
+            if curl -fsS http://127.0.0.1:3011/setup | grep -q "Welcome to QADeck"; then
+              LOGIN_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3011/login)
               test "$LOGIN_CODE" = "302"
               exit 0
             fi
@@ -80,6 +82,7 @@ jobs:
 
       - name: All-in-one runtime smoke test
         env:
+          PORT: 3012
           DATA_DIR: /tmp/qadeck-ci-allinone
           QADECK_ADMIN_EMAIL: admin@example.com
           QADECK_ADMIN_PASSWORD: ci-password
@@ -90,7 +93,7 @@ jobs:
           APP_PID=$!
           trap 'kill $APP_PID || true' EXIT
           for i in {1..20}; do
-            if curl -fsS http://127.0.0.1:3000/health; then exit 0; fi
+            if curl -fsS http://127.0.0.1:3012/health; then exit 0; fi
             sleep 1
           done
           cat /tmp/qadeck-allinone.log
@@ -100,13 +103,13 @@ jobs:
     name: Publish Docker image
     needs: validate
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -138,7 +141,7 @@ jobs:
     name: Deploy production Docker server
     needs: validate
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AUTO_DEPLOY_ENABLED == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
       group: qadeck-production-deploy
@@ -201,7 +204,7 @@ jobs:
 
           WEB_OK=0
           for i in $(seq 1 45); do
-            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+            if curl -fsS http://127.0.0.1:3010/health >/dev/null; then
               WEB_OK=1
               break
             fi
