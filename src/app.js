@@ -7,6 +7,7 @@ const helmet = require('helmet');
 const db = require('./db');
 const { encrypt, decrypt } = require('./crypto');
 const { installAgentRoutes } = require('./agent-routes');
+const { version: appVersion } = require('../package.json');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -26,6 +27,7 @@ app.use('/static',express.static(path.join(process.cwd(),'public')));
 app.use(session({secret:process.env.SESSION_SECRET||'qadeck-dev-session-secret-change-me',resave:false,saveUninitialized:false,cookie:{httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production'&&process.env.FORCE_HTTPS==='true',maxAge:12*60*60*1000}}));
 app.locals.formatDate=(value)=>value?new Date(`${value.replace(' ','T')}Z`).toLocaleString():'—';
 app.locals.issueClass=(severity)=>({critical:'danger',high:'danger',medium:'warning',low:'info'}[severity]||'muted');
+app.locals.appVersion=appVersion;
 
 function safeEqual(a,b){const aa=Buffer.from(String(a||'')),bb=Buffer.from(String(b||''));return aa.length===bb.length&&crypto.timingSafeEqual(aa,bb);}
 function requireAuth(req,res,next){if(req.session?.authenticated)return next();return res.redirect('/login');}
@@ -54,7 +56,7 @@ function saveScenarioSteps(scenarioId,steps){db.transaction(()=>{db.prepare('DEL
 function artifactAbsolute(webPath){if(!webPath||!String(webPath).startsWith('/artifacts/'))return null;const relative=String(webPath).slice('/artifacts/'.length),resolved=path.resolve(artifactRoot,relative);if(resolved!==artifactRoot&&!resolved.startsWith(`${artifactRoot}${path.sep}`))return null;return resolved;}
 function queueRun(projectId,runType='crawl',scenarioId=null){const active=db.prepare("SELECT id FROM test_runs WHERE project_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(projectId);if(active)return {id:active.id,existing:true};const result=db.prepare('INSERT INTO test_runs (project_id,status,queued_at,run_type,scenario_id) VALUES (?,\'queued\',CURRENT_TIMESTAMP,?,?)').run(projectId,runType,scenarioId);return{id:Number(result.lastInsertRowid),existing:false};}
 
-app.get('/health',(req,res)=>res.json({status:'ok',app:'QADeck',version:'0.6.2',mode:'web'}));
+app.get('/health',(req,res)=>res.json({status:'ok',app:'QADeck',version:appVersion,mode:'web'}));
 app.post('/hooks/projects/:id/run/:token',(req,res)=>{
   const project=db.prepare('SELECT * FROM projects WHERE id=?').get(req.params.id);if(!project||!project.trigger_token||!safeEqual(req.params.token,project.trigger_token))return res.status(404).json({error:'Not found'});
   if(req.body?.agent===true||req.body?.run_type==='agent'){
