@@ -8,7 +8,46 @@
 
 QADeck is a self-hosted, Docker-first web QA platform powered by Playwright. It runs background browser/API tests, captures screenshots/video/traces, checks UI regressions, accessibility and performance, and keeps results in one dashboard.
 
-## QADeck v0.5
+## QADeck v0.6
+
+### Software QA Agents
+QADeck now includes a background GitHub-aware QA Agent beside the existing Playwright browser QA engine.
+
+- Connect a GitHub repository to each QADeck project
+- Public repository analysis without a token; private repository support with an encrypted GitHub token
+- Background source review using the existing Docker worker
+- Branch/commit analysis
+- Pull-request-aware analysis using the PR head and changed files
+- Static code-quality and security findings with file/line references
+- Checks for likely exposed credentials, command/SQL injection paths, unsafe dynamic execution, wildcard CORS, tracked .env files and container hardening issues
+- Automatic browser/API/security test suggestions based on detected application features
+- Optional OpenAI-compatible developer summary using the existing AI settings
+- Agent history and standalone reports
+- JSON report endpoint for integrations
+- Create a GitHub Issue directly from a completed Agent report
+- CI/deployment trigger support using the existing private project trigger token
+
+To queue a source review from CI/CD:
+
+```json
+{
+  "agent": true,
+  "ref": "main",
+  "commit_sha": "GITHUB_SHA"
+}
+```
+
+For a pull request, include its number:
+
+```json
+{
+  "agent": true,
+  "pr_number": 42,
+  "commit_sha": "PR_HEAD_SHA"
+}
+```
+
+The Agent never modifies source code automatically. Findings and suggested fixes remain reviewable, and GitHub Issue creation is an explicit action.
 
 ### Core QA
 - Multi-project dashboard and persistent background queue
