@@ -135,14 +135,29 @@ async function loadRepository(config, run) {
   if (!repository) throw new Error('Configure a GitHub repository first (owner/repo or GitHub URL).');
   const token = tokenFor(config);
   const meta = await githubJson(`/repos/${repository}`, token);
-  const branch = String(run.ref || config.branch || meta.default_branch || 'main');
-  const branchInfo = await githubJson(`/repos/${repository}/branches/${encodeURIComponent(branch)}`, token);
-  const sha = run.commit_sha || branchInfo.commit?.sha;
-  if (!sha) throw new Error('Could not resolve the repository commit.');
+  let branch = String(run.ref || config.branch || meta.default_branch || 'main');
+  let sha = run.commit_sha || null;
+  let rawPaths = [];
 
-  const tree = await githubJson(`/repos/${repository}/git/trees/${sha}?recursive=1`, token);
-  const paths = (tree.tree || [])
-    .filter((item) => item.type === 'blob' && isReviewable(item.path) && Number(item.size || 0) <= 180000)
+  if (run.pr_number) {
+    const pr = await githubJson(`/repos/${repository}/pulls/${Number(run.pr_number)}`, token);
+    sha = sha || pr.head?.sha;
+    branch = pr.head?.ref || branch;
+    const changed = await githubJson(`/repos/${repository}/pulls/${Number(run.pr_number)}/files?per_page=100`, token);
+    rawPaths = (Array.isArray(changed) ? changed : []).map((item)=>({path:item.filename,type:'blob',size:Number(item.changes || 0)}));
+  } else {
+    if (!sha) {
+      const branchInfo = await githubJson(`/repos/${repository}/branches/${encodeURIComponent(branch)}`, token);
+      sha = branchInfo.commit?.sha;
+    }
+    if (!sha) throw new Error('Could not resolve the repository commit.');
+    const tree = await githubJson(`/repos/${repository}/git/trees/${sha}?recursive=1`, token);
+    rawPaths = tree.tree || [];
+  }
+
+  if (!sha) throw new Error('Could not resolve the repository commit.');
+  const paths = rawPaths
+    .filter((item) => item.type === 'blob' && isReviewable(item.path) && (!item.size || Number(item.size || 0) <= 180000))
     .sort((a,b) => Number(a.size || 0) - Number(b.size || 0))
     .slice(0, Math.max(10, Number(process.env.AGENT_MAX_FILES || 80)));
 
@@ -176,7 +191,7 @@ function addFinding(out, file, severity, category, title, details, recommendatio
   });
 }
 
-function scanFile(file, findings) {
+function scanFile(file, findings, config) {
   const c = file.content;
   const p = file.path;
 
@@ -224,6 +239,9 @@ function scanFile(file, findings) {
   ];
 
   for (const rule of rules) {
+    const securityRule = ['security','container'].includes(rule.cat);
+    if (securityRule && !Number(config.enable_security || 0)) continue;
+    if (!securityRule && !Number(config.enable_code_review || 0)) continue;
     rule.re.lastIndex = 0;
     let match;
     let count = 0;
@@ -234,15 +252,15 @@ function scanFile(file, findings) {
     }
   }
 
-  if (p === '.env' || /(^|\/)\.env$/i.test(p)) {
+  if (Number(config.enable_security || 0) && (p === '.env' || /(^|\/)\.env$/i.test(p))) {
     addFinding(findings, file, 'critical', 'security', 'Environment secrets file is tracked', p, 'Remove .env from Git history, add it to .gitignore, and rotate any credentials that may have been committed.');
   }
 
-  if (/Dockerfile$/i.test(p) && !/^\s*USER\s+/mi.test(c)) {
+  if (Number(config.enable_security || 0) && /Dockerfile$/i.test(p) && !/^\s*USER\s+/mi.test(c)) {
     addFinding(findings, file, 'medium', 'container', 'Container has no explicit non-root USER', 'Dockerfile does not contain a USER directive.', 'Run the application as a dedicated non-root user where possible.');
   }
 
-  if (/package\.json$/i.test(p)) {
+  if (Number(config.enable_code_review || 0) && /package\.json$/i.test(p)) {
     try {
       const pkg = JSON.parse(c);
       if (!pkg.scripts?.test && !pkg.scripts?.check) {
@@ -366,7 +384,7 @@ async function processNextAgentJob(workerId) {
 
     const findings = [];
     if (Number(run.config.enable_code_review || 0) || Number(run.config.enable_security || 0)) {
-      for (const file of repo.files) scanFile(file, findings);
+      for (const file of repo.files) scanFile(file, findings, run.config);
     }
 
     const suggestions = Number(run.config.enable_test_suggestions || 0) ? makeSuggestions(repo.files, findings) : [];
