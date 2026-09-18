@@ -16,7 +16,7 @@ QADeck is a self-hosted quality-assurance platform for web applications. Add a p
 
 QADeck also includes a GitHub-aware QA Agent for source-code review, reusable no-code scenarios for functional testing, scheduled checks, notifications and compact A4 PDF reports.
 
-**Current version: v0.6.2**
+**Current version: v0.6.3**
 
 ---
 
@@ -324,6 +324,22 @@ Interrupted/stale jobs can be recovered and re-queued.
 ---
 
 ## Software QA Agent
+
+### Configure the GitHub QA Agent
+
+Open **Agents** from the sidebar, choose a project, then click **Configure Agent**. You can also open a project directly and click **Configure Agent** in the project header.
+
+Configure:
+
+- GitHub repository, e.g. `kasundigital/QADeck`
+- Branch, e.g. `main` (optional; blank uses the repository default)
+- GitHub token for private repositories (not required for public repositories)
+- Code review
+- Security review
+- Automatic test suggestions
+
+Save the settings, then click **Run Agent** to queue a background source review.
+
 
 QADeck includes a GitHub-aware background QA Agent in addition to browser testing.
 
