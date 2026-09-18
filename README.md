@@ -16,7 +16,7 @@ QADeck is a self-hosted quality-assurance platform for web applications. Add a p
 
 QADeck also includes a GitHub-aware QA Agent for source-code review, reusable no-code scenarios for functional testing, scheduled checks, notifications and compact A4 PDF reports.
 
-**Current version: v0.6.1**
+**Current version: v0.6.2**
 
 ---
 
@@ -43,41 +43,37 @@ http://YOUR-SERVER-IP:3000
 
 QADeck runs both the **web application** and the **background QA worker** inside this all-in-one container. Tests continue running even when you close the browser.
 
-### First login
+### First-run setup
 
-On the first start, QADeck automatically creates:
+QADeck no longer ships with a default administrator username or password.
 
-- an admin login
-- a secure random admin password
-- the session signing secret
-- the credential-encryption key
-
-These values are stored in the persistent `qadeck_data` volume.
-
-View the initial login details:
-
-```bash
-docker logs qadeck
-```
-
-Example:
+After starting the container, open:
 
 ```text
-============================================================
- QADeck all-in-one container
- Web UI + background QA worker
-============================================================
- Login email: admin@qadeck.local
- Login password: generated-secure-password
- Open: http://YOUR-SERVER-IP:3000
-============================================================
+http://YOUR-SERVER-IP:3000
 ```
 
-The generated password is shown during initial setup. Save it somewhere secure.
+On a fresh installation QADeck automatically opens the **first-run setup wizard**.
 
-### Use your own admin login
+Create:
 
-You can set the login yourself:
+- Admin username
+- Password
+- Password confirmation
+
+After setup, QADeck signs you in automatically and disables the setup wizard.
+
+Your administrator login is stored in the persistent `qadeck_data` volume, so it remains unchanged after container restarts and upgrades.
+
+You can later change the username or password from:
+
+```text
+QADeck → Account
+```
+
+### Optional unattended/admin environment setup
+
+For automated deployments you can skip the web setup wizard by supplying an administrator username and password when creating the container:
 
 ```bash
 docker run -d \
@@ -86,13 +82,13 @@ docker run -d \
   --init \
   --shm-size=1g \
   -p 3000:3000 \
-  -e QADECK_ADMIN_EMAIL=admin@example.com \
+  -e QADECK_ADMIN_USERNAME=admin \
   -e QADECK_ADMIN_PASSWORD='CHANGE-THIS-STRONG-PASSWORD' \
   -v qadeck_data:/app/data \
   ghcr.io/kasundigital/qadeck:latest
 ```
 
-QADeck will still generate and persist `SESSION_SECRET` and `CREDENTIALS_KEY` automatically if you do not supply them.
+QADeck still generates and persists `SESSION_SECRET` and `CREDENTIALS_KEY` automatically in all-in-one Docker mode.
 
 ### Use a different host port
 
@@ -545,8 +541,8 @@ docker run -d \
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `3000` | QADeck HTTP port inside the container |
-| `QADECK_ADMIN_EMAIL` | `admin@qadeck.local` in all-in-one first setup | Dashboard administrator |
-| `QADECK_ADMIN_PASSWORD` | generated on first all-in-one start | Dashboard password |
+| `QADECK_ADMIN_USERNAME` | blank | Optional admin username; blank opens first-run setup wizard |
+| `QADECK_ADMIN_PASSWORD` | blank | Optional admin password; blank opens first-run setup wizard |
 | `SESSION_SECRET` | generated on first all-in-one start | Session signing secret |
 | `CREDENTIALS_KEY` | generated on first all-in-one start | Encrypts stored target credentials |
 | `MAX_PAGES_PER_RUN` | `20` | Maximum pages per viewport |
@@ -577,7 +573,7 @@ The recommended Docker command maps this to:
 qadeck_data
 ```
 
-The volume contains the database, QA evidence, screenshots, visual baselines and persistent all-in-one runtime configuration.
+The volume contains the database, QA evidence, screenshots, visual baselines, encryption/session secrets and the administrator login created by the first-run wizard.
 
 Target-site passwords and additional login values are encrypted before they are stored.
 
