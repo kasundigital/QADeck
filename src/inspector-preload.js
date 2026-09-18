@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const express = require('express');
+const { installAgentRoutes } = require('./agent-routes');
 
 const originalListen = express.application.listen;
 const inspectTimeout = Math.max(5000, Number(process.env.PAGE_INSPECT_TIMEOUT_MS || 20000));
@@ -169,6 +170,7 @@ async function inspectLoginPage(targetUrl) {
 }
 
 express.application.listen = function patchedListen(...args) {
+  installAgentRoutes(this);
   if (!this.__qadeckLoginInspectorInstalled) {
     this.__qadeckLoginInspectorInstalled = true;
 
