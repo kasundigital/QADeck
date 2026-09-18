@@ -17,6 +17,9 @@
 
 <%if(run.summary){%><div class="section-head"><div><h2>Agent summary</h2><p>Static analysis summary, enhanced by AI when configured.</p></div></div><div class="ai-summary"><pre><%=run.summary%></pre></div><%}%>
 
+<div class="section-head"><div><h2>Automated QA execution</h2><p>QADeck turns the detected test needs into an executable browser suite automatically.</p></div><%if(run.status==='completed'&&!autoRun){%><form method="post" action="/agent-runs/<%=run.id%>/auto-run"><button class="btn primary" type="submit">▶ Run Automated QA</button></form><%}%></div>
+<%if(autoRun){%><div class="info-strip"><div><span>Automation run</span><strong>#<%=autoRun.id%></strong></div><div><span>Status</span><strong class="capitalize"><%=autoRun.status%></strong></div><div><span>Checks</span><strong><%=autoRun.pages_scanned%></strong></div><div><span>Issues</span><strong class="<%=autoRun.issues_count?'text-danger':'text-success'%>"><%=autoRun.issues_count%></strong></div></div><p><a class="text-link" href="/runs/<%=autoRun.id%>">Open automated QA report →</a></p><%}else if(run.status==='completed'){%><div class="empty-state small"><h3>Automation not queued</h3><p>Enable Fully automated QA execution in Agent settings, or run it now.</p></div><%}%>
+
 <div class="section-head"><div><h2>Code & security findings</h2><p>These are review signals. Confirm findings in context before changing production code.</p></div></div>
 <%if(!findings.length && run.status==='completed'){%><div class="success-panel"><span>✓</span><div><h2>No static findings</h2><p>No configured QADeck Agent rules matched the reviewed files.</p></div></div><%}else{%>
 <div class="agent-findings">
@@ -26,7 +29,7 @@
 </article><%})%>
 </div><%}%>
 
-<%if(suggestions.length){%><div class="section-head"><div><h2>Recommended QA tests</h2><p>Generated from the source features detected in this repository.</p></div></div>
+<%if(suggestions.length){%><div class="section-head"><div><h2>Recommended QA tests</h2><p>Detected from the repository. When fully automated QA is enabled, QADeck executes the applicable browser checks automatically.</p></div></div>
 <div class="agent-test-grid"><%suggestions.forEach(s=>{%><article class="agent-test-card"><div><span class="category"><%=s.test_type%></span><span class="priority priority-<%=s.priority%>"><%=s.priority%></span></div><h3><%=s.title%></h3><p><%=s.rationale||''%></p><ol><%s.steps.forEach(step=>{%><li><%=step%></li><%})%></ol></article><%})%></div><%}%>
 
 <%if(run.status!=='running'){%><div class="danger-zone"><div><h3>Delete Agent report</h3><p>Removes this source-analysis report and its findings only.</p></div><form method="post" action="/agent-runs/<%=run.id%>/delete" onsubmit="return confirm('Delete this Agent report?')"><button class="btn danger-btn">Delete report</button></form></div><%}%>
