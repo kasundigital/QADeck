@@ -18,7 +18,8 @@ function configFor(projectId) {
     github_token_enc: null,
     enable_code_review: 1,
     enable_security: 1,
-    enable_test_suggestions: 1
+    enable_test_suggestions: 1,
+    enable_auto_tests: 1
   };
 }
 
@@ -74,8 +75,8 @@ function installAgentRoutes(app) {
     if (req.body.clear_github_token === '1') tokenEnc = null;
 
     db.prepare(`
-      INSERT INTO agent_configs (project_id,repository,branch,github_token_enc,enable_code_review,enable_security,enable_test_suggestions,updated_at)
-      VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+      INSERT INTO agent_configs (project_id,repository,branch,github_token_enc,enable_code_review,enable_security,enable_test_suggestions,enable_auto_tests,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
       ON CONFLICT(project_id) DO UPDATE SET
         repository=excluded.repository,
         branch=excluded.branch,
@@ -83,12 +84,14 @@ function installAgentRoutes(app) {
         enable_code_review=excluded.enable_code_review,
         enable_security=excluded.enable_security,
         enable_test_suggestions=excluded.enable_test_suggestions,
+        enable_auto_tests=excluded.enable_auto_tests,
         updated_at=CURRENT_TIMESTAMP
     `).run(
       project.id, repository, branch || null, tokenEnc,
       parseToggle(req.body,'enable_code_review'),
       parseToggle(req.body,'enable_security'),
-      parseToggle(req.body,'enable_test_suggestions')
+      parseToggle(req.body,'enable_test_suggestions'),
+      parseToggle(req.body,'enable_auto_tests')
     );
     res.redirect(`/projects/${project.id}/agent?saved=1`);
   });
@@ -122,7 +125,8 @@ function installAgentRoutes(app) {
     `).all(run.id);
     const suggestions = db.prepare('SELECT * FROM agent_test_suggestions WHERE agent_run_id=? ORDER BY CASE priority WHEN \'high\' THEN 1 WHEN \'medium\' THEN 2 ELSE 3 END,id').all(run.id)
       .map((s)=>{ try{s.steps=JSON.parse(s.steps_json || '[]');}catch{s.steps=[];} return s; });
-    res.render('agent-run', { run, findings, suggestions });
+    const autoRun = db.prepare("SELECT * FROM test_runs WHERE agent_run_id=? AND run_type='auto' ORDER BY id DESC LIMIT 1").get(run.id) || null;
+    res.render('agent-run', { run, findings, suggestions, autoRun });
   });
 
   app.get('/api/agent-runs/:id', (req, res) => {
@@ -131,6 +135,16 @@ function installAgentRoutes(app) {
     const findings = db.prepare('SELECT severity,category,file_path,line_number,title,details,recommendation FROM agent_findings WHERE agent_run_id=? ORDER BY id').all(run.id);
     const suggestions = db.prepare('SELECT title,test_type,priority,rationale,steps_json FROM agent_test_suggestions WHERE agent_run_id=? ORDER BY id').all(run.id);
     res.json({run,findings,suggestions});
+  });
+
+  app.post('/agent-runs/:id/auto-run', (req, res) => {
+    const run = db.prepare('SELECT id,project_id,status FROM agent_runs WHERE id=?').get(req.params.id);
+    if (!run) return res.status(404).send('Agent run not found');
+    if (run.status !== 'completed') return res.status(409).send('Agent analysis must complete before automated QA can run.');
+    const active = db.prepare("SELECT id FROM test_runs WHERE agent_run_id=? AND run_type='auto' AND status IN ('queued','running') ORDER BY id DESC LIMIT 1").get(run.id);
+    if (active) return res.redirect('/runs/' + active.id);
+    const result = db.prepare("INSERT INTO test_runs (project_id,status,queued_at,run_type,agent_run_id) VALUES (?,'queued',CURRENT_TIMESTAMP,'auto',?)").run(run.project_id, run.id);
+    res.redirect('/runs/' + result.lastInsertRowid);
   });
 
   app.post('/agent-runs/:id/github-issue', async (req, res) => {
