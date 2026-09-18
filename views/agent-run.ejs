@@ -1,0 +1,33 @@
+<%- include('partials/header', { title: 'Agent Run #' + run.id, email: '' }) %>
+<link rel="stylesheet" href="/static/agents.css">
+<div class="page-head">
+  <div><span class="eyebrow">AGENT REPORT</span><h1><%=run.project_name%> · Agent #<%=run.id%></h1><p><%=run.repository||'Repository'%> · <%=run.ref||'default branch'%><%if(run.commit_sha){%> · <code><%=run.commit_sha.slice(0,12)%></code><%}%></p></div>
+  <div class="head-actions"><a class="btn secondary" href="/projects/<%=run.project_id%>/agent">← Agent</a><a class="btn secondary" href="/api/agent-runs/<%=run.id%>" target="_blank">JSON</a></div>
+</div>
+
+<%if(run.status==='queued'||run.status==='running'){%><div class="running-banner"><span class="spinner"></span><div><strong>Agent analysis is <%=run.status%> in the background…</strong><p>You can close QADeck. The worker continues independently.</p></div></div><script>setTimeout(()=>location.reload(),2500)</script><%}%>
+<%if(run.status==='failed'){%><div class="alert danger"><strong>Agent failed:</strong> <%=run.error_message%></div><%}%>
+
+<div class="stats-grid report-stats">
+  <div class="stat-card"><span>Status</span><strong class="capitalize"><%=run.status%></strong></div>
+  <div class="stat-card"><span>Files reviewed</span><strong><%=run.files_scanned%></strong></div>
+  <div class="stat-card"><span>Findings</span><strong class="<%=run.findings_count?'text-danger':'text-success'%>"><%=run.findings_count%></strong></div>
+  <div class="stat-card"><span>Suggested tests</span><strong><%=run.suggestions_count%></strong></div>
+</div>
+
+<%if(run.summary){%><div class="section-head"><div><h2>Agent summary</h2><p>Static analysis summary, enhanced by AI when configured.</p></div></div><div class="ai-summary"><pre><%=run.summary%></pre></div><%}%>
+
+<div class="section-head"><div><h2>Code & security findings</h2><p>These are review signals. Confirm findings in context before changing production code.</p></div></div>
+<%if(!findings.length && run.status==='completed'){%><div class="success-panel"><span>✓</span><div><h2>No static findings</h2><p>No configured QADeck Agent rules matched the reviewed files.</p></div></div><%}else{%>
+<div class="agent-findings">
+<%findings.forEach(f=>{%><article class="agent-finding">
+  <div class="issue-bar"><span class="severity <%=issueClass(f.severity)%>"><%=f.severity%></span><span class="category"><%=f.category%></span><%if(f.file_path){%><code><%=f.file_path%><%=f.line_number?':'+f.line_number:''%></code><%}%></div>
+  <div class="agent-finding-body"><h3><%=f.title%></h3><%if(f.details){%><pre><%=f.details%></pre><%}%><%if(f.recommendation){%><p><strong>Suggested fix:</strong> <%=f.recommendation%></p><%}%></div>
+</article><%})%>
+</div><%}%>
+
+<%if(suggestions.length){%><div class="section-head"><div><h2>Recommended QA tests</h2><p>Generated from the source features detected in this repository.</p></div></div>
+<div class="agent-test-grid"><%suggestions.forEach(s=>{%><article class="agent-test-card"><div><span class="category"><%=s.test_type%></span><span class="priority priority-<%=s.priority%>"><%=s.priority%></span></div><h3><%=s.title%></h3><p><%=s.rationale||''%></p><ol><%s.steps.forEach(step=>{%><li><%=step%></li><%})%></ol></article><%})%></div><%}%>
+
+<%if(run.status!=='running'){%><div class="danger-zone"><div><h3>Delete Agent report</h3><p>Removes this source-analysis report and its findings only.</p></div><form method="post" action="/agent-runs/<%=run.id%>/delete" onsubmit="return confirm('Delete this Agent report?')"><button class="btn danger-btn">Delete report</button></form></div><%}%>
+<%- include('partials/footer') %>
