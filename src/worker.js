@@ -5,6 +5,7 @@ const { runProject } = require('./runner');
 const { runScenario } = require('./scenario-runner');
 const { notifyRun } = require('./notifier');
 const { summarizeRun } = require('./ai');
+const { processNextAgentJob, recoverStaleAgentRuns } = require('./agent-service');
 
 const pollMs = Math.max(500, Number(process.env.WORKER_POLL_MS || 1500));
 const staleMinutes = Math.max(1, Number(process.env.WORKER_STALE_MINUTES || 2));
@@ -90,6 +91,7 @@ async function finishPostProcessing(runId) {
 
 async function loop() {
   recoverStaleRuns();
+  recoverStaleAgentRuns(staleMinutes);
   console.log(`[QADeck worker] Started as ${workerId}. Polling every ${pollMs} ms.`);
 
   while (!stopping) {
@@ -110,7 +112,13 @@ async function loop() {
       continue;
     }
 
-    if (!job) { await sleep(pollMs); continue; }
+    if (!job) {
+      let agentWorked = false;
+      try { agentWorked = await processNextAgentJob(workerId); }
+      catch (error) { console.error('[QADeck agent] Agent job failed:', error); }
+      if (!agentWorked) await sleep(pollMs);
+      continue;
+    }
 
     console.log(`[QADeck worker] Running ${job.runType} job #${job.runId} for ${job.project.name}.`);
     try {
