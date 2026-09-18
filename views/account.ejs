@@ -1,0 +1,57 @@
+<%- include('partials/header', { title: 'Account', email }) %>
+<div class="page-head compact">
+  <div>
+    <span class="eyebrow">ACCOUNT</span>
+    <h1>Admin login</h1>
+    <p>Change the username and password used to sign in to QADeck.</p>
+  </div>
+</div>
+
+<div class="form-card account-settings-card">
+  <% if (success) { %><div class="alert account-success"><strong>✓</strong> <%= success %></div><% } %>
+  <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
+
+  <form method="post" action="/account" class="stack-form">
+    <div class="form-section">
+      <h3>Administrator</h3>
+      <p>This username is used only to sign in to this QADeck installation.</p>
+    </div>
+
+    <label>
+      Admin username
+      <input type="text" name="username" value="<%= adminUsername %>" required minlength="3" maxlength="80" autocomplete="username">
+    </label>
+
+    <div class="form-section divider">
+      <h3>Change password</h3>
+      <p>Enter the current password to save changes. Leave the new password fields empty if you only want to change the username.</p>
+    </div>
+
+    <label>
+      Current password
+      <input type="password" name="current_password" required autocomplete="current-password">
+    </label>
+
+    <div class="account-password-grid">
+      <label>
+        New password
+        <input type="password" name="new_password" minlength="10" autocomplete="new-password" placeholder="Minimum 10 characters">
+      </label>
+      <label>
+        Confirm new password
+        <input type="password" name="confirm_password" minlength="10" autocomplete="new-password" placeholder="Repeat new password">
+      </label>
+    </div>
+
+    <div class="account-security-note">
+      <strong>Persistent setting</strong>
+      <span>The updated login is stored in the QADeck data volume and remains active after Docker restarts and upgrades.</span>
+    </div>
+
+    <div class="form-actions">
+      <a class="btn secondary" href="/">Cancel</a>
+      <button class="btn primary" type="submit">Save login settings</button>
+    </div>
+  </form>
+</div>
+<%- include('partials/footer') %>
