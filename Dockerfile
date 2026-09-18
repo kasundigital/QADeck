@@ -3,6 +3,10 @@ FROM node:22-bookworm-slim
 ENV NODE_ENV=production \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+LABEL org.opencontainers.image.source="https://github.com/kasundigital/QADeck"
+LABEL org.opencontainers.image.title="QADeck"
+LABEL org.opencontainers.image.description="Self-hosted web QA automation platform"
+
 WORKDIR /app
 
 COPY package.json ./
@@ -18,4 +22,4 @@ RUN mkdir -p /app/data/artifacts && chown -R node:node /app
 USER node
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["npm", "run", "all-in-one"]
