@@ -4,6 +4,7 @@ services:
     container_name: qadeck
     restart: unless-stopped
     init: true
+    command: ["npm", "start"]
     ports:
       - "3000:3000"
     env_file:
