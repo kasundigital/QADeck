@@ -32,10 +32,10 @@
         <p class="muted">Sign in to your QADeck workspace</p>
         <% if (error) { %><div class="alert danger"><%= error %></div><% } %>
         <form method="post" action="/login" class="stack-form">
-          <label>Email
+          <label>Username
             <div class="input-wrap">
               <svg class="input-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6.5h16v11H4z" stroke="currentColor" stroke-width="1.8" rx="2"/><path d="m5 8 7 5 7-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <input type="email" name="email" required autofocus autocomplete="username" placeholder="you@example.com">
+              <input type="text" name="username" required autofocus autocomplete="username" placeholder="Enter your username">
             </div>
           </label>
           <label>Password
