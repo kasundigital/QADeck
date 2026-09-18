@@ -6,6 +6,7 @@ const session = require('express-session');
 const helmet = require('helmet');
 const db = require('./db');
 const { encrypt, decrypt } = require('./crypto');
+const { installAgentRoutes } = require('./agent-routes');
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -108,6 +109,7 @@ app.post('/login',(req,res)=>{
 app.post('/logout',requireAuth,(req,res)=>req.session.destroy(()=>res.redirect('/login')));
 app.use(requireAuth);
 app.use('/artifacts',express.static(artifactRoot));
+installAgentRoutes(app);
 
 app.get('/account',(req,res)=>{const {username}=getAdminCredentials();res.render('account',{email:req.session.email||username,adminUsername:username,error:null,success:req.query.updated==='1'?'Admin login updated successfully.':null});});
 app.post('/account',(req,res)=>{
