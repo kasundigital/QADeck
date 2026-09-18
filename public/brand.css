@@ -9,3 +9,6 @@
 @media(max-width:760px){.brand.logo-brand{padding:0 0 12px}.sidebar-logo{width:170px}.sidebar-brand-sub{margin-left:48px}}
 
 @media print{.pdf-brand-mark{background-image:url('/static/brand/qadeck-icon.svg')!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important;color:transparent!important;border-radius:2.5mm!important}}
+
+
+.setup-card .setup-step{display:table;margin:0 auto 12px;padding:5px 8px;border-radius:999px;background:#eeefff;color:#5b5ce2;font-size:8px;font-weight:900;letter-spacing:.1em}.setup-card .stack-form{margin-top:22px}.account-settings-card{max-width:760px}.account-password-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.account-security-note{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border:1px solid #dfe5f3;border-radius:12px;background:linear-gradient(135deg,#f8faff,#f6f3ff);color:#667089;font-size:11px;line-height:1.5}.account-security-note strong{color:#3f4a63;white-space:nowrap}.alert.account-success{background:#ecfaf3;color:#176842;border:1px solid #cceedd}.setup-page .showcase-orbit span:first-child{font-size:18px;font-weight:900}.setup-page .showcase-orbit span:last-child{font-weight:900;color:#a9b8ff}@media(max-width:620px){.account-password-grid{grid-template-columns:1fr}.account-security-note{display:grid}}
