@@ -8,7 +8,7 @@
 
 QADeck is a self-hosted, Docker-first web QA platform powered by Playwright. It runs background browser/API tests, captures screenshots/video/traces, checks UI regressions, accessibility and performance, and keeps results in one dashboard.
 
-## QADeck v0.6
+## QADeck v0.6.1
 
 ### Software QA Agents
 QADeck now includes a background GitHub-aware QA Agent beside the existing Playwright browser QA engine.
@@ -131,14 +131,19 @@ Browser / CI / Scheduler
  screenshots / video / traces / reports
 ```
 
-## Docker quick start
+## One-command Docker install
+
+No Git clone and no Docker Compose are required for the normal single-server install.
 
 ```bash
-git clone https://github.com/kasundigital/QADeck.git
-cd QADeck
-cp .env.example .env
-nano .env
-docker compose up -d --build
+docker run -d \
+  --name qadeck \
+  --restart unless-stopped \
+  --init \
+  --shm-size=1g \
+  -p 3000:3000 \
+  -v qadeck_data:/app/data \
+  ghcr.io/kasundigital/qadeck:latest
 ```
 
 Open:
@@ -147,28 +152,76 @@ Open:
 http://SERVER-IP:3000
 ```
 
-Check services:
+On the first start, QADeck generates a secure admin password and encryption/session secrets and stores them in the persistent `qadeck_data` volume. Get the initial login details with:
 
 ```bash
-docker compose ps
+docker logs qadeck
 ```
 
-Logs:
+You will see:
 
-```bash
-docker compose logs -f qadeck
-docker compose logs -f qadeck-worker
+```text
+Login email: admin@qadeck.local
+Login password: <generated-password>
 ```
 
-## Update an existing installation
+The container runs both the **QADeck web UI and background QA worker**, so tests continue after you close the browser.
+
+### Use your own admin login
+
+You can provide your own login during the first install:
 
 ```bash
-cd /opt/QADeck
-git pull
+docker run -d \
+  --name qadeck \
+  --restart unless-stopped \
+  --init \
+  --shm-size=1g \
+  -p 3000:3000 \
+  -e QADECK_ADMIN_EMAIL=admin@example.com \
+  -e QADECK_ADMIN_PASSWORD='CHANGE-THIS-STRONG-PASSWORD' \
+  -v qadeck_data:/app/data \
+  ghcr.io/kasundigital/qadeck:latest
+```
+
+QADeck automatically generates and persists `SESSION_SECRET` and `CREDENTIALS_KEY` when they are not supplied.
+
+### Update the Docker install
+
+Pull the new image and recreate the container. The named volume keeps projects, settings, credentials, reports and screenshots.
+
+```bash
+docker pull ghcr.io/kasundigital/qadeck:latest
+docker rm -f qadeck
+
+docker run -d \
+  --name qadeck \
+  --restart unless-stopped \
+  --init \
+  --shm-size=1g \
+  -p 3000:3000 \
+  -v qadeck_data:/app/data \
+  ghcr.io/kasundigital/qadeck:latest
+```
+
+Check status and logs:
+
+```bash
+docker ps --filter name=qadeck
+docker logs -f qadeck
+```
+
+### Docker Compose / multiple workers
+
+For larger installations that need separate web/worker containers or multiple parallel workers:
+
+```bash
+git clone https://github.com/kasundigital/QADeck.git
+cd QADeck
+cp .env.example .env
+nano .env
 docker compose up -d --build
 ```
-
-The existing `qadeck_data` volume is preserved. QADeck applies additive SQLite migrations on startup.
 
 ## Parallel workers
 
