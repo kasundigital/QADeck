@@ -1,0 +1,45 @@
+<%- include('partials/header', { title: project.name + ' Agent', email: '' }) %>
+<link rel="stylesheet" href="/static/agents.css">
+<div class="page-head">
+  <div><span class="eyebrow">SOFTWARE QA AGENT</span><h1><%=project.name%></h1><p>Background source review for code quality, security patterns and test coverage suggestions.</p></div>
+  <div class="head-actions"><a class="btn secondary" href="/projects/<%=project.id%>">← Project</a><%if(config.repository){%><form method="post" action="/projects/<%=project.id%>/agent/run"><button class="btn primary" type="submit">▶ Run Agent</button></form><%}%></div>
+</div>
+
+<%if(saved){%><div class="alert success-alert">Agent settings saved.</div><%}%>
+<%if(error){%><div class="alert danger"><%=error%></div><%}%>
+
+<div class="agent-layout">
+  <section class="form-card wide-form agent-config-card">
+    <form method="post" action="/projects/<%=project.id%>/agent" class="stack-form">
+      <div class="form-section"><h3>GitHub repository</h3><p>Public repositories work without a token. Private repositories require a GitHub token with read access to Contents and Metadata.</p></div>
+      <label>Repository<input name="repository" required value="<%=config.repository||''%>" placeholder="kasundigital/QADeck or https://github.com/owner/repo"></label>
+      <label>Branch <span class="optional">optional</span><input name="branch" value="<%=config.branch||''%>" placeholder="Leave blank to use repository default"></label>
+      <label>GitHub token <span class="optional"><%=config.github_token_enc?'saved — leave blank to keep':''%></span><input name="github_token" type="password" autocomplete="new-password" placeholder="github_pat_..."></label>
+      <%if(config.github_token_enc){%><label class="toggle-row"><input type="checkbox" name="clear_github_token" value="1"><span>Remove saved GitHub token</span></label><%}%>
+
+      <div class="form-section divider"><h3>Agent capabilities</h3></div>
+      <label class="toggle-row"><input type="hidden" name="enable_code_review" value="0"><input type="checkbox" name="enable_code_review" value="1" <%=Number(config.enable_code_review??1)?'checked':''%>><span><strong>Code review</strong><small>Review source/config files for risky and maintainability patterns.</small></span></label>
+      <label class="toggle-row"><input type="hidden" name="enable_security" value="0"><input type="checkbox" name="enable_security" value="1" <%=Number(config.enable_security??1)?'checked':''%>><span><strong>Security review</strong><small>Look for exposed secrets, injection paths, unsafe execution and container issues.</small></span></label>
+      <label class="toggle-row"><input type="hidden" name="enable_test_suggestions" value="0"><input type="checkbox" name="enable_test_suggestions" value="1" <%=Number(config.enable_test_suggestions??1)?'checked':''%>><span><strong>Automatic test suggestions</strong><small>Suggest browser/API/security tests based on detected application features.</small></span></label>
+
+      <div class="form-actions"><button class="btn primary" type="submit">Save Agent settings</button></div>
+    </form>
+  </section>
+
+  <aside class="agent-help-card">
+    <span class="eyebrow">CI / DEPLOYMENT</span><h3>Run after a Git push</h3><p>Use the same private project trigger already shown on the project page and send:</p>
+    <pre>{"agent":true,
+"ref":"main",
+"commit_sha":"GITHUB_SHA"}</pre>
+    <p>QADeck queues the source review and the background worker processes it even when the dashboard is closed.</p>
+    <hr>
+    <span class="eyebrow">AI</span><h3>AI summary</h3><p>If your existing <code>AI_BASE_URL</code>, <code>AI_API_KEY</code> and <code>AI_MODEL</code> are configured, Agent reports also receive an AI-generated developer summary. Static checks still work without AI.</p>
+  </aside>
+</div>
+
+<div class="section-head"><div><h2>Agent history</h2><p>Source review jobs run separately from browser QA runs.</p></div></div>
+<%if(!runs.length){%><div class="empty-state small"><h3>No Agent runs yet</h3><p>Save the repository settings and run the Agent.</p></div><%}else{%>
+<div class="table-card"><table><thead><tr><th>Run</th><th>Status</th><th>Ref</th><th>Files</th><th>Findings</th><th>Tests</th><th>Completed</th><th></th></tr></thead><tbody>
+<%runs.forEach(r=>{%><tr><td>#<%=r.id%></td><td><span class="status-pill <%=r.status%>"><%=r.status%></span></td><td><%=r.ref||'default'%></td><td><%=r.files_scanned%></td><td><strong class="<%=r.findings_count?'text-danger':'text-success'%>"><%=r.findings_count%></strong></td><td><%=r.suggestions_count%></td><td><%=formatDate(r.completed_at)%></td><td><a class="text-link" href="/agent-runs/<%=r.id%>">Report →</a></td></tr><%})%>
+</tbody></table></div><%}%>
+<%- include('partials/footer') %>
