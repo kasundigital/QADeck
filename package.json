@@ -1,6 +1,6 @@
 {
   "name": "qadeck",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Self-hosted web QA platform powered by Playwright",
   "main": "src/app.js",
